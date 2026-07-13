@@ -18,6 +18,67 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('de-AT', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 
+// ---------- Effekte: Toast, Konfetti, Zähl-Animation ----------
+
+function toast(msg) {
+  $$('.toast').forEach((t) => t.remove());
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+function confetti(count) {
+  const old = $('#confettiCanvas');
+  if (old) old.remove();
+  const canvas = document.createElement('canvas');
+  canvas.id = 'confettiCanvas';
+  canvas.width = innerWidth * devicePixelRatio;
+  canvas.height = innerHeight * devicePixelRatio;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  const colors = ['#ffa657', '#ffd166', '#4dd4ac', '#7cc4ff', '#ff8fa3'];
+  const parts = Array.from({ length: count || 90 }, () => ({
+    x: innerWidth / 2 + (Math.random() - 0.5) * innerWidth * 0.5,
+    y: innerHeight * 0.35,
+    vx: (Math.random() - 0.5) * 9,
+    vy: -Math.random() * 11 - 4,
+    size: Math.random() * 7 + 4,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - 0.5) * 0.3,
+  }));
+  const t0 = performance.now();
+  (function frame(t) {
+    const elapsed = (t - t0) / 1000;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of parts) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.35; p.rot += p.vr;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, 1 - elapsed / 2.2);
+      ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+      ctx.restore();
+    }
+    if (elapsed < 2.2) requestAnimationFrame(frame);
+    else canvas.remove();
+  })(t0);
+}
+
+function animateCount(el, to, suffix) {
+  const dur = 900, t0 = performance.now();
+  (function frame(t) {
+    const k = Math.min(1, (t - t0) / dur);
+    const eased = 1 - Math.pow(1 - k, 3);
+    el.textContent = Math.round(to * eased) + (suffix || '');
+    if (k < 1) requestAnimationFrame(frame);
+  })(t0);
+}
+
 // ---------- Topbar ----------
 
 function renderTopbar() {
@@ -64,14 +125,30 @@ function greeting() {
   return 'Guten Abend, Michael! 🌙';
 }
 
+function weekStripHtml() {
+  const names = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const trainedDays = new Set(state.logs.map((l) => new Date(l.date).toDateString()));
+  return names.map((n, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const trained = trainedDays.has(d.toDateString());
+    const isToday = d.toDateString() === now.toDateString();
+    return '<div class="wday' + (trained ? ' trained' : '') + (isToday ? ' today' : '') + '">' +
+      '<div class="d-label">' + n + '</div>' +
+      '<div class="d-dot">' + (trained ? '✓' : d.getDate()) + '</div></div>';
+  }).join('');
+}
+
 function renderHome() {
   const { streak, thisWeekCount, goal } = getStreak(state);
   const lvl = getLevel(state.points);
   if (!selectedWorkoutKey) selectedWorkoutKey = suggestedWorkoutKey();
 
-  const dots = Array.from({ length: goal }, (_, i) =>
-    '<div class="week-dot' + (i < thisWeekCount ? ' done' : '') + '">' + (i < thisWeekCount ? '✓' : '') + '</div>'
-  ).join('');
+  const dateLine = new Date().toLocaleDateString('de-AT', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const picker = PLAN.workouts.map((w) =>
     '<button data-key="' + w.key + '" class="' + (w.key === selectedWorkoutKey ? 'sel' : '') + '">' + w.key +
@@ -85,25 +162,26 @@ function renderHome() {
 
   view.innerHTML =
     '<div class="card hero">' +
+      '<div class="date-line">' + esc(dateLine) + '</div>' +
       '<div class="greeting">' + greeting() + '</div>' +
       '<div class="quote">' + esc(pickQuote(QUOTES.start)) + '</div>' +
     '</div>' +
 
     '<div class="stat-row">' +
-      '<div class="stat-tile"><div class="val flame">🔥 ' + streak + '</div><div class="lbl">Wochen-Streak</div></div>' +
-      '<div class="stat-tile"><div class="val gold">' + state.points + '</div><div class="lbl">Punkte</div></div>' +
-      '<div class="stat-tile"><div class="val">' + state.logs.length + '</div><div class="lbl">Trainings</div></div>' +
+      '<div class="stat-tile"><div class="val flame"><span class="flame-icon">🔥</span> <span data-count="' + streak + '">0</span></div><div class="lbl">Wochen-Streak</div></div>' +
+      '<div class="stat-tile"><div class="val gold" data-count="' + state.points + '">0</div><div class="lbl">Punkte</div></div>' +
+      '<div class="stat-tile"><div class="val" data-count="' + state.logs.length + '">0</div><div class="lbl">Trainings</div></div>' +
     '</div>' +
 
     '<div class="card">' +
       '<div class="level-line"><span><b>' + lvl.icon + ' ' + lvl.name + '</b> · Level ' + lvl.level + '</span>' +
       '<span>' + (lvl.next ? (lvl.next.pts - state.points) + ' P bis ' + lvl.next.name : 'Max-Level!') + '</span></div>' +
-      '<div class="level-bar"><div style="width:' + Math.round(lvl.progress * 100) + '%"></div></div>' +
+      '<div class="level-bar"><div style="width:0%"></div></div>' +
     '</div>' +
 
     '<div class="card">' +
-      '<h2>Diese Woche: ' + thisWeekCount + ' / ' + goal + ' Trainings</h2>' +
-      '<div class="week-dots">' + dots + '</div>' +
+      '<h2>Diese Woche · ' + thisWeekCount + ' / ' + goal + ' Trainings</h2>' +
+      '<div class="week-strip">' + weekStripHtml() + '</div>' +
     '</div>' +
 
     '<div class="card">' +
@@ -113,6 +191,12 @@ function renderHome() {
     '</div>' +
 
     (badges ? '<div class="card"><h2>Letzte Abzeichen</h2><div>' + badges + '</div></div>' : '');
+
+  $$('[data-count]').forEach((el) => animateCount(el, +el.dataset.count));
+  requestAnimationFrame(() => {
+    const bar = $('.level-bar > div');
+    if (bar) bar.style.width = Math.round(lvl.progress * 100) + '%';
+  });
 
   $$('.workout-picker button').forEach((b) => b.addEventListener('click', () => {
     selectedWorkoutKey = b.dataset.key;
@@ -135,6 +219,7 @@ function startWorkout(key) {
       const lastSets = hist[0] ? hist[0].sets : [];
       return {
         id: ex.id,
+        prevBest: hist[0] ? bestOf(ex, hist[0].sets) : null,
         rec: { weight: rec.weight, increase: !!rec.increase, caution: !!rec.caution, message: rec.message },
         sets: Array.from({ length: ex.sets }, (_, i) => ({
           weight: rec.weight != null ? rec.weight : (lastSets[i] ? lastSets[i].weight : null),
@@ -196,7 +281,8 @@ function renderWorkout() {
         '<button class="pain-toggle' + (sEx.pain ? ' on' : '') + '" data-pain="' + exIdx + '">' + (sEx.pain ? '⚠️ Ja' : 'Nein') + '</button></div>'
       : '';
 
-    return '<div class="card exercise-card" data-excard="' + exIdx + '">' +
+    const complete = sEx.sets.length > 0 && sEx.sets.every((s) => s.done);
+    return '<div class="card exercise-card' + (complete ? ' complete' : '') + '" data-excard="' + exIdx + '">' +
       '<div class="exercise-head"><h3>' + esc(ex.name) + '</h3><span class="target">' + target + '</span></div>' +
       (ex.note ? '<div class="exercise-note">⚠️ ' + esc(ex.note) + '</div>' : '') +
       '<div class="rec' + recClass + '">🧠 ' + esc(sEx.rec.message) + '</div>' +
@@ -205,14 +291,18 @@ function renderWorkout() {
   }).join('');
 
   view.innerHTML =
+    '<div class="session-progress"><div class="sp-line"><span>' + esc(w.name) + '</span><span class="pct" id="spPct"></span></div>' +
+    '<div class="sp-bar"><div id="spBar"></div></div></div>' +
     '<details class="fold" ' + (Object.keys(session.warmup).length < PLAN.warmup.length ? 'open' : '') + '>' +
       '<summary>🔥 Aufwärmen (Pflicht bei Impingement!)</summary>' +
       '<div class="fold-body checklist">' + warmupHtml + '</div>' +
     '</details>' +
-    '<div class="section-label">' + esc(w.name) + ' – Übungen</div>' +
+    '<div class="section-label">Übungen</div>' +
     exHtml +
     '<button class="btn" id="finishBtn">🏁 Training abschließen</button>' +
     '<button class="btn danger" id="cancelBtn">Training verwerfen</button>';
+
+  updateSessionProgress();
 
   // Events
   $$('input[data-wu]').forEach((cb) => cb.addEventListener('change', () => {
@@ -233,7 +323,8 @@ function renderWorkout() {
     const row = btn.closest('.set-row');
     const exIdx = +row.dataset.ex;
     const i = +btn.dataset.check;
-    const s = session.exercises[exIdx].sets[i];
+    const sEx = session.exercises[exIdx];
+    const s = sEx.sets[i];
     // Werte aus den Inputs übernehmen
     $$('input', row).forEach((inp) => {
       const v = inp.value === '' ? null : parseFloat(inp.value.replace(',', '.'));
@@ -242,8 +333,22 @@ function renderWorkout() {
     s.done = !s.done;
     btn.classList.toggle('done', s.done);
     saveSession(session);
+
+    const ex = getWorkout(session.workoutKey).exercises[exIdx];
+    const card = $('[data-excard="' + exIdx + '"]');
+    if (card) card.classList.toggle('complete', sEx.sets.every((x) => x.done));
+    updateSessionProgress();
+
     if (s.done) {
-      const ex = getWorkout(session.workoutKey).exercises[exIdx];
+      // Neuer Bestwert? Sofort feiern!
+      const now = bestOf(ex, [s]);
+      if (!sEx.prCelebrated && sEx.prevBest != null && now != null && now > sEx.prevBest) {
+        sEx.prCelebrated = true;
+        saveSession(session);
+        const unit = ex.metric === 'time' ? ' Sek' : ex.metric === 'reps' ? ' Wdh' : ' kg';
+        toast('🎉 Neuer Rekord: ' + fmtW(now) + unit + ' bei ' + ex.name + '!');
+        confetti(50);
+      }
       startRestTimer(ex.group === 'main' ? 90 : 60);
     }
   }));
@@ -266,26 +371,57 @@ function renderWorkout() {
   });
 }
 
-// ---------- Rest-Timer ----------
+function updateSessionProgress() {
+  const bar = $('#spBar'), pct = $('#spPct');
+  if (!bar || !session) return;
+  let total = 0, done = 0;
+  for (const sEx of session.exercises) {
+    total += sEx.sets.length;
+    done += sEx.sets.filter((s) => s.done).length;
+  }
+  const p = total ? Math.round((done / total) * 100) : 0;
+  bar.style.width = p + '%';
+  pct.textContent = done + '/' + total + ' Sätze · ' + p + ' %';
+}
+
+// ---------- Rest-Timer (Kreis-Countdown) ----------
+
+const RING_R = 24, RING_C = 2 * Math.PI * RING_R;
 
 function startRestTimer(seconds) {
   stopRestTimer();
   const el = $('#restTimer');
-  let remaining = seconds;
+  let total = seconds, remaining = seconds;
   el.classList.remove('hidden');
+
+  el.innerHTML =
+    '<div class="ring">' +
+      '<svg width="56" height="56" viewBox="0 0 56 56">' +
+        '<circle class="ring-bg" cx="28" cy="28" r="' + RING_R + '" fill="none" stroke-width="5"/>' +
+        '<circle class="ring-fg" id="ringFg" cx="28" cy="28" r="' + RING_R + '" fill="none" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + RING_C + '" stroke-dashoffset="0"/>' +
+      '</svg>' +
+      '<div class="ring-time" id="ringTime"></div>' +
+    '</div>' +
+    '<div class="rt-mid"><div class="rt-label">Pause läuft</div><div class="rt-sub">Durchatmen, Schultern locker</div></div>' +
+    '<div class="rt-btns"><button id="addRest">+30s</button><button id="skipRest">Weiter ▶︎</button></div>';
+
   const draw = () => {
     const m = Math.floor(remaining / 60);
     const s = String(remaining % 60).padStart(2, '0');
-    el.innerHTML = '<div><div class="rt-label">Pause</div><div class="time">' + m + ':' + s + '</div></div>' +
-      '<button id="skipRest">Weiter ▶︎</button>';
-    $('#skipRest').addEventListener('click', stopRestTimer);
+    $('#ringTime').textContent = m + ':' + s;
+    $('#ringFg').style.strokeDashoffset = String(RING_C * (1 - remaining / total));
   };
   draw();
+
+  $('#skipRest').addEventListener('click', stopRestTimer);
+  $('#addRest').addEventListener('click', () => { remaining += 30; total += 30; draw(); });
+
   restInterval = setInterval(() => {
     remaining--;
     if (remaining <= 0) {
       stopRestTimer();
       beep();
+      toast('⏱ Pause vorbei – nächster Satz!');
     } else draw();
   }, 1000);
 }
@@ -368,6 +504,7 @@ function finishWorkout(rehabDone) {
   };
 
   const gap = state.logs.length ? (Date.now() - new Date(state.logs[state.logs.length - 1].date).getTime()) / 86400000 : 0;
+  const prevLevel = getLevel(state.points).level;
 
   const score = scoreWorkout(log, state.logs);
   log.points = score.pts;
@@ -382,7 +519,7 @@ function finishWorkout(rehabDone) {
   session = null;
   saveSession(null);
 
-  showSummary(log, score, newBadges, gap);
+  showSummary(log, score, newBadges, gap, prevLevel);
 }
 
 function bestOf(ex, sets) {
@@ -391,7 +528,7 @@ function bestOf(ex, sets) {
   return Math.max(...sets.map((s) => s.reps || 0));
 }
 
-function showSummary(log, score, newBadges, gapDays) {
+function showSummary(log, score, newBadges, gapDays, prevLevel) {
   const anyIncrease = log.exercises.some((e) => e.increased);
   const anyPain = log.exercises.some((e) => e.pain);
   let quote;
@@ -409,16 +546,24 @@ function showSummary(log, score, newBadges, gapDays) {
   ).join('');
 
   const lvl = getLevel(state.points);
+  const levelUp = lvl.level > prevLevel
+    ? '<div class="levelup-banner"><span class="lu-icon">' + lvl.icon + '</span><div>' +
+      '<div class="lu-title">LEVEL UP! Du bist jetzt ' + esc(lvl.name) + '</div>' +
+      '<div class="lu-sub">Level ' + lvl.level + ' erreicht – weiter geht\'s!</div></div></div>'
+    : '';
 
   showOverlay(
     '<h2>🏁 ' + esc(log.workoutName) + ' geschafft!</h2>' +
     '<div class="summary-quote">' + esc(quote) + '</div>' +
+    '<div class="summary-total"><div class="st-num" id="stNum">0</div><div class="st-lbl">Punkte verdient</div></div>' +
+    levelUp +
     lines +
-    '<div class="pts-total"><span>Gesamt</span><span class="p">+' + score.pts + ' Punkte</span></div>' +
-    '<div class="muted small">' + lvl.icon + ' ' + esc(lvl.name) + ' · ' + state.points + ' Punkte gesamt · ' + log.durationMin + ' Min Training</div>' +
+    '<div class="muted small" style="margin-top:10px">' + lvl.icon + ' ' + esc(lvl.name) + ' · ' + state.points + ' Punkte gesamt · ' + log.durationMin + ' Min Training</div>' +
     badgesHtml +
     '<button class="btn" id="closeSummary">Stark! Weiter 💪</button>'
   );
+  setTimeout(() => animateCount($('#stNum'), score.pts, ''), 250);
+  confetti((newBadges.length || lvl.level > prevLevel) ? 130 : 90);
   $('#closeSummary').addEventListener('click', () => { hideOverlay(); switchTab('home'); });
 }
 
