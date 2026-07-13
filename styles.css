@@ -169,10 +169,11 @@ main { padding: 16px; max-width: 560px; margin: 0 auto; }
   padding: 10px 14px; margin-bottom: 14px;
 }
 .session-progress .sp-line { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }
-.session-progress .sp-line .pct { color: var(--accent2); font-variant-numeric: tabular-nums; }
+.session-progress .pct { color: var(--accent2); font-variant-numeric: tabular-nums; }
 .session-progress .sp-bar { height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
 .session-progress .sp-bar > div { height: 100%; background: linear-gradient(90deg, var(--accent2), #35b893); border-radius: 99px; transition: width 0.4s cubic-bezier(0.2, 0.7, 0.3, 1); }
-.session-progress .sp-sub { text-align: right; font-size: 11.5px; color: var(--muted); margin-top: 5px; font-weight: 600; }
+.session-progress .sp-sub { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); margin-top: 5px; font-weight: 600; }
+.session-progress .sp-clock { color: var(--accent); font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 800; }
 
 .workout-estimate { text-align: center; font-size: 12.5px; color: var(--text2); font-weight: 600; margin-top: 10px; }
 

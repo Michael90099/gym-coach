@@ -296,9 +296,10 @@ function renderWorkout() {
   }).join('');
 
   view.innerHTML =
-    '<div class="session-progress"><div class="sp-line"><span>' + esc(w.name) + '</span><span class="pct" id="spPct"></span></div>' +
+    '<div class="session-progress">' +
+    '<div class="sp-line"><span>' + esc(w.name) + '</span><span class="sp-clock" id="spClock">⏱ 0:00</span></div>' +
     '<div class="sp-bar"><div id="spBar"></div></div>' +
-    '<div class="sp-sub" id="spSub"></div></div>' +
+    '<div class="sp-sub"><span class="pct" id="spPct"></span><span id="spRemain"></span></div></div>' +
     '<details class="fold" ' + (Object.keys(session.warmup).length < PLAN.warmup.length ? 'open' : '') + '>' +
       '<summary>🔥 Aufwärmen (Pflicht bei Impingement!)</summary>' +
       '<div class="fold-body checklist">' + warmupHtml + '</div>' +
@@ -309,6 +310,7 @@ function renderWorkout() {
     '<button class="btn danger" id="cancelBtn">Training verwerfen</button>';
 
   updateSessionProgress();
+  startSessionClock();
 
   // Events
   $$('input[data-wu]').forEach((cb) => cb.addEventListener('change', () => {
@@ -383,6 +385,7 @@ function renderWorkout() {
   $('#cancelBtn').addEventListener('click', () => {
     if (confirm('Training wirklich verwerfen? Eingetragene Sätze gehen verloren.')) {
       stopRestTimer();
+      stopSessionClock();
       session = null;
       saveSession(null);
       render();
@@ -391,7 +394,7 @@ function renderWorkout() {
 }
 
 function updateSessionProgress() {
-  const bar = $('#spBar'), pct = $('#spPct'), sub = $('#spSub');
+  const bar = $('#spBar'), pct = $('#spPct'), remain = $('#spRemain');
   if (!bar || !session) return;
   let total = 0, done = 0;
   for (const sEx of session.exercises) {
@@ -401,8 +404,29 @@ function updateSessionProgress() {
   const p = total ? Math.round((done / total) * 100) : 0;
   bar.style.width = p + '%';
   pct.textContent = done + '/' + total + ' Sätze · ' + p + ' %';
-  const remaining = estimateRemainingSeconds(session);
-  sub.textContent = done >= total ? '🏁 Bereit zum Abschließen' : '⏱ noch ca. ' + fmtDuration(remaining);
+  remain.textContent = done >= total ? '🏁 Bereit zum Abschließen' : 'noch ca. ' + fmtDuration(estimateRemainingSeconds(session));
+}
+
+// ---------- Gesamtuhr (läuft ab Trainingsstart mit) ----------
+
+let sessionClockInterval = null;
+
+function startSessionClock() {
+  if (sessionClockInterval) clearInterval(sessionClockInterval);
+  const tick = () => {
+    const el = $('#spClock');
+    if (!el || !session) { stopSessionClock(); return; }
+    const sec = Math.max(0, Math.floor((Date.now() - new Date(session.startedAt).getTime()) / 1000));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    el.textContent = '⏱ ' + (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+  };
+  tick();
+  sessionClockInterval = setInterval(tick, 1000);
+}
+
+function stopSessionClock() {
+  if (sessionClockInterval) clearInterval(sessionClockInterval);
+  sessionClockInterval = null;
 }
 
 // ---------- Rest-Timer (Kreis-Countdown) ----------
@@ -536,6 +560,7 @@ function finishWorkout(rehabDone) {
   const newBadges = checkBadges(state);
   saveState(state);
 
+  stopSessionClock();
   session = null;
   saveSession(null);
 
