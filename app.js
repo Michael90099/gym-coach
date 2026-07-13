@@ -18,6 +18,10 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('de-AT', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 
+function fmtTime(sec) {
+  return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+}
+
 // ---------- Effekte: Toast, Konfetti, Zähl-Animation ----------
 
 function toast(msg) {
@@ -283,7 +287,7 @@ function renderWorkout() {
 
     const complete = sEx.sets.length > 0 && sEx.sets.every((s) => s.done);
     return '<div class="card exercise-card' + (complete ? ' complete' : '') + '" data-excard="' + exIdx + '">' +
-      '<div class="exercise-head"><h3>' + esc(ex.name) + '</h3><span class="target">' + target + '</span></div>' +
+      '<div class="exercise-head"><h3>' + esc(ex.name) + '</h3><span class="target">' + target + ' · ⏱ ' + fmtTime(ex.rest) + '</span></div>' +
       (ex.note ? '<div class="exercise-note">⚠️ ' + esc(ex.note) + '</div>' : '') +
       '<div class="rec' + recClass + '">🧠 ' + esc(sEx.rec.message) + '</div>' +
       setsHtml + painHtml +
@@ -349,7 +353,20 @@ function renderWorkout() {
         toast('🎉 Neuer Rekord: ' + fmtW(now) + unit + ' bei ' + ex.name + '!');
         confetti(50);
       }
-      startRestTimer(ex.group === 'main' ? 90 : 60);
+
+      const allDone = session.exercises.every((e) => e.sets.every((x) => x.done));
+      if (allDone) {
+        stopRestTimer();
+        toast('🏁 Alle Sätze geschafft – Training abschließen!');
+      } else if (sEx.sets.every((x) => x.done)) {
+        // Übung fertig -> Übungswechsel: mindestens 2 Min Pause, nächste Übung ansagen
+        const nextEx = session.exercises.find((e) => !e.sets.every((x) => x.done));
+        const nextName = nextEx ? PLAN.exerciseById[nextEx.id].name : '';
+        startRestTimer(Math.max(ex.rest, 120), 'Übung geschafft ✓', nextName ? 'Dann: ' + nextName : '');
+      } else {
+        const doneCount = sEx.sets.filter((x) => x.done).length;
+        startRestTimer(ex.rest, 'Pause · ' + ex.name, 'Dann Satz ' + Math.min(doneCount + 1, sEx.sets.length) + ' von ' + sEx.sets.length);
+      }
     }
   }));
 
@@ -388,7 +405,7 @@ function updateSessionProgress() {
 
 const RING_R = 24, RING_C = 2 * Math.PI * RING_R;
 
-function startRestTimer(seconds) {
+function startRestTimer(seconds, title, sub) {
   stopRestTimer();
   const el = $('#restTimer');
   let total = seconds, remaining = seconds;
@@ -402,13 +419,12 @@ function startRestTimer(seconds) {
       '</svg>' +
       '<div class="ring-time" id="ringTime"></div>' +
     '</div>' +
-    '<div class="rt-mid"><div class="rt-label">Pause läuft</div><div class="rt-sub">Durchatmen, Schultern locker</div></div>' +
+    '<div class="rt-mid"><div class="rt-label">' + esc(title || 'Pause läuft') + '</div>' +
+    '<div class="rt-sub">' + esc(sub || 'Durchatmen, Schultern locker') + '</div></div>' +
     '<div class="rt-btns"><button id="addRest">+30s</button><button id="skipRest">Weiter ▶︎</button></div>';
 
   const draw = () => {
-    const m = Math.floor(remaining / 60);
-    const s = String(remaining % 60).padStart(2, '0');
-    $('#ringTime').textContent = m + ':' + s;
+    $('#ringTime').textContent = fmtTime(remaining);
     $('#ringFg').style.strokeDashoffset = String(RING_C * (1 - remaining / total));
   };
   draw();
@@ -757,7 +773,7 @@ function renderPlanView() {
         : ex.metric === 'distance' ? ex.sets + '×' + ex.distTarget + 'm'
         : ex.sets + '×' + (ex.repsMin === ex.repsMax ? ex.repsMax : ex.repsMin + '–' + ex.repsMax);
       return '<div class="plan-ex"><div>' + esc(ex.name) + '<div class="px-muscle">' + esc(ex.muscle) +
-        (ex.note ? ' · ' + esc(ex.note) : '') + '</div></div><div class="px-sets">' + target + '</div></div>';
+        ' · ⏱ ' + fmtTime(ex.rest) + ' Pause' + (ex.note ? ' · ' + esc(ex.note) : '') + '</div></div><div class="px-sets">' + target + '</div></div>';
     }).join('');
     return '<details class="fold"><summary>' + esc(w.name) + '</summary><div class="fold-body">' + rows + '</div></details>';
   }).join('');
@@ -768,6 +784,7 @@ function renderPlanView() {
 
   const rehab = PLAN.rehab.map((r) => '<div class="plan-ex"><div>' + esc(r.name) + '</div></div>').join('');
   const rules = PLAN.intensityRules.map((r) => '<div class="plan-ex"><div>• ' + esc(r) + '</div></div>').join('');
+  const restRules = PLAN.restRules.map((r) => '<div class="plan-ex"><div>• ' + esc(r) + '</div></div>').join('');
 
   view.innerHTML =
     '<div class="section-label">Dein Plan (Rotation A → B → C, 3×/Woche)</div>' +
@@ -775,6 +792,7 @@ function renderPlanView() {
     '<details class="fold"><summary>🩹 Reha-Block (2–3×/Woche)</summary><div class="fold-body">' + rehab + '</div></details>' +
     '<details class="fold"><summary>❌ Verbotene Übungen</summary><div class="fold-body">' + forbidden + '</div></details>' +
     '<details class="fold"><summary>📏 Intensitäts-Regeln</summary><div class="fold-body">' + rules + '</div></details>' +
+    '<details class="fold"><summary>⏱ Pausenzeiten</summary><div class="fold-body">' + restRules + '</div></details>' +
     '<div class="card"><p class="muted small">Mit konsequentem Training verbessern sich Impingement-Beschwerden meist in 8–12 Wochen. ' +
     'Der Schlüssel: schrittweiser Kraftaufbau von Rotatorenmanschette und Schulterblattmuskulatur – nicht das Vermeiden jeder Belastung.</p></div>';
 }

@@ -100,7 +100,33 @@ const PLAN = {
     '1–2 Wiederholungen im Tank lassen – nicht bis zum Muskelversagen',
     'Leichter Muskelzug ist okay. Stechender Schmerz = Gewicht runter oder Übung tauschen.',
   ],
+
+  // Wissenschaftlich fundierte Pausenzeiten: längere Pausen (2–3 Min) bringen bei
+  // Grundübungen nachweislich mehr Kraft- und Muskelaufbau als 60–90 Sekunden.
+  restRules: [
+    'Schwere Beinübungen (Beinpresse, Kreuzheben, Kniebeugen): 2:30 Min',
+    'Grundübungen Oberkörper (Rudern, Latzug, Brustpresse): 2:00 Min',
+    'Isolationsübungen (Arme, Waden, Beinmaschinen): 1:30 Min',
+    'Schulter- & Rehaübungen: 1:00 Min – hier zählt Qualität, nicht Erschöpfung',
+    'Core: 1:00 Min',
+    'Zwischen zwei Übungen: 2–3 Min (Geräte-Umbau zählt als Pause mit)',
+    'Faustregel: Vor dem nächsten Satz sollst du wieder ruhig durchatmen können',
+  ],
 };
+
+// Pausenzeit pro Übung (Sekunden): Gruppen-Standard + Ausnahmen
+const REST_DEFAULTS = { main: 120, shoulder: 60, core: 60 };
+const REST_OVERRIDES = {
+  a_beinpresse: 150, a_rdl: 150, c_kniebeuge: 150,            // schwere Beinübungen
+  a_waden: 90, a_hammercurls: 90, a_trizeps: 90,              // Isolation
+  b_beinbeuger: 90, b_beinstrecker: 90, b_liegestuetze: 90,
+  b_szcurls: 90, b_trizeps: 90,
+  c_einarm_rudern: 90, c_bizeps: 90, c_trizeps: 90,
+  c_farmerwalk: 90,                                           // hohe Ganzkörper-Last
+};
+for (const w of PLAN.workouts) {
+  for (const ex of w.exercises) ex.rest = REST_OVERRIDES[ex.id] || REST_DEFAULTS[ex.group];
+}
 
 PLAN.exerciseById = {};
 for (const w of PLAN.workouts) {
