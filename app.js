@@ -388,6 +388,7 @@ function renderWorkout() {
       stopSessionClock();
       session = null;
       saveSession(null);
+      applyPendingReloadIfSafe();
       render();
     }
   });
@@ -609,7 +610,7 @@ function showSummary(log, score, newBadges, gapDays, prevLevel) {
   );
   setTimeout(() => animateCount($('#stNum'), score.pts, ''), 250);
   confetti((newBadges.length || lvl.level > prevLevel) ? 130 : 90);
-  $('#closeSummary').addEventListener('click', () => { hideOverlay(); switchTab('home'); });
+  $('#closeSummary').addEventListener('click', () => { hideOverlay(); switchTab('home'); applyPendingReloadIfSafe(); });
 }
 
 // ---------- Overlay ----------
@@ -828,10 +829,43 @@ function renderPlanView() {
     'Der Schlüssel: schrittweiser Kraftaufbau von Rotatorenmanschette und Schulterblattmuskulatur – nicht das Vermeiden jeder Belastung.</p></div>';
 }
 
-// ---------- Service Worker ----------
+// ---------- Service Worker (mit robustem Auto-Update fürs iPhone) ----------
+// iOS hält als App installierte Seiten oft im Hintergrund am Leben statt sie zu beenden –
+// dadurch findet nie eine echte Neuladung statt und Updates kommen nie an. Deshalb hier:
+// 1) updateViaCache:'none' – sw.js selbst wird nie aus dem HTTP-Cache bedient
+// 2) Bei jedem Sichtbarwerden der App aktiv auf ein Update prüfen
+// 3) Sobald ein neuer Service Worker übernimmt, die Seite neu laden –
+//    außer mitten in einem Training, dann erst danach (kein Datenverlust bei Live-Eingaben)
+
+let pendingReload = false;
+
+function applyPendingReloadIfSafe() {
+  if (pendingReload && !session) location.reload();
+}
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+      reg.update();
+
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (session) {
+          pendingReload = true;
+          toast('🔄 Update geladen – wird nach dem Training aktiv');
+        } else {
+          location.reload();
+        }
+      });
+
+      const checkForUpdate = () => reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') { checkForUpdate(); applyPendingReloadIfSafe(); }
+      });
+      window.addEventListener('pageshow', () => { checkForUpdate(); applyPendingReloadIfSafe(); });
+      window.addEventListener('focus', checkForUpdate);
+    } catch (e) { /* Service Worker nicht verfügbar */ }
+  });
 }
 
 // ---------- Start ----------
