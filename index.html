@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>GymCoach</title>
+  <meta name="description" content="Dein persönlicher Trainings-Coach – Ganzkörperplan mit Schulter-Fokus">
+  <meta name="theme-color" content="#0e1117">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="GymCoach">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🏋️ GymCoach</div>
+    <div class="topbar-right" id="topbarStats"></div>
+  </header>
+
+  <main id="view"></main>
+
+  <div id="restTimer" class="rest-timer hidden"></div>
+
+  <nav class="tabbar">
+    <button class="tab active" data-tab="home"><span class="tab-icon">🏠</span>Heute</button>
+    <button class="tab" data-tab="history"><span class="tab-icon">📖</span>Verlauf</button>
+    <button class="tab" data-tab="progress"><span class="tab-icon">📊</span>Fortschritt</button>
+    <button class="tab" data-tab="plan"><span class="tab-icon">📋</span>Plan</button>
+  </nav>
+
+  <div id="overlay" class="overlay hidden"></div>
+
+  <script src="plan.js"></script>
+  <script src="storage.js"></script>
+  <script src="coach.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
