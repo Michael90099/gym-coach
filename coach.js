@@ -1,5 +1,50 @@
 // GymCoach – Progressions-Engine, Punkte, Level, Badges, Motivation
 
+// ---------- Zeitschätzung ----------
+
+const WARMUP_SEC = 8 * 60; // Aufwärmblock lt. Plan (Ergometer + Band-/Rotationsübungen)
+
+function estimateSetWorkSeconds(ex) {
+  if (ex.metric === 'time') return ex.timeTarget;
+  if (ex.metric === 'distance') return ex.distTarget; // ~1 m/Sek. unter Last
+  const reps = ex.repsMax || ex.repsMin || 10;
+  return Math.round(reps * 3 + 8); // ~3 Sek./Wdh. kontrolliert + Rüstzeit
+}
+
+// Gesamtzeit für ein komplettes Training (inkl. Aufwärmen, Satz- und Übungswechsel-Pausen)
+function estimateWorkoutSeconds(workout) {
+  let total = WARMUP_SEC;
+  const exs = workout.exercises;
+  exs.forEach((ex, i) => {
+    const setSec = estimateSetWorkSeconds(ex);
+    total += setSec * ex.sets;
+    total += (ex.sets - 1) * ex.rest; // Pausen zwischen den Sätzen derselben Übung
+    if (i < exs.length - 1) total += Math.max(ex.rest, 120); // Übungswechsel-Pause
+  });
+  return total;
+}
+
+// Restzeit für ein laufendes Training, basierend auf noch offenen Sätzen
+function estimateRemainingSeconds(session) {
+  let total = 0;
+  session.exercises.forEach((sEx, i) => {
+    const ex = PLAN.exerciseById[sEx.id];
+    const remaining = sEx.sets.filter((s) => !s.done).length;
+    if (remaining === 0) return;
+    total += estimateSetWorkSeconds(ex) * remaining;
+    total += Math.max(0, remaining - 1) * ex.rest;
+    if (i < session.exercises.length - 1) total += Math.max(ex.rest, 120);
+  });
+  return total;
+}
+
+function fmtDuration(totalSec) {
+  const m = Math.max(1, Math.round(totalSec / 60));
+  if (m < 60) return m + ' Min';
+  const h = Math.floor(m / 60), rm = m % 60;
+  return h + ' Std' + (rm ? ' ' + rm + ' Min' : '');
+}
+
 // ---------- Progression ----------
 
 function roundToIncrement(value) {

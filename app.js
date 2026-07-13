@@ -191,6 +191,7 @@ function renderHome() {
     '<div class="card">' +
       '<h2>Nächstes Training</h2>' +
       '<div class="workout-picker">' + picker + '</div>' +
+      '<div class="workout-estimate">⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(getWorkout(selectedWorkoutKey))) + ' inkl. Aufwärmen</div>' +
       '<button class="btn" id="startBtn">▶︎ ' + esc(getWorkout(selectedWorkoutKey).name) + ' starten</button>' +
     '</div>' +
 
@@ -296,7 +297,8 @@ function renderWorkout() {
 
   view.innerHTML =
     '<div class="session-progress"><div class="sp-line"><span>' + esc(w.name) + '</span><span class="pct" id="spPct"></span></div>' +
-    '<div class="sp-bar"><div id="spBar"></div></div></div>' +
+    '<div class="sp-bar"><div id="spBar"></div></div>' +
+    '<div class="sp-sub" id="spSub"></div></div>' +
     '<details class="fold" ' + (Object.keys(session.warmup).length < PLAN.warmup.length ? 'open' : '') + '>' +
       '<summary>🔥 Aufwärmen (Pflicht bei Impingement!)</summary>' +
       '<div class="fold-body checklist">' + warmupHtml + '</div>' +
@@ -389,7 +391,7 @@ function renderWorkout() {
 }
 
 function updateSessionProgress() {
-  const bar = $('#spBar'), pct = $('#spPct');
+  const bar = $('#spBar'), pct = $('#spPct'), sub = $('#spSub');
   if (!bar || !session) return;
   let total = 0, done = 0;
   for (const sEx of session.exercises) {
@@ -399,6 +401,8 @@ function updateSessionProgress() {
   const p = total ? Math.round((done / total) * 100) : 0;
   bar.style.width = p + '%';
   pct.textContent = done + '/' + total + ' Sätze · ' + p + ' %';
+  const remaining = estimateRemainingSeconds(session);
+  sub.textContent = done >= total ? '🏁 Bereit zum Abschließen' : '⏱ noch ca. ' + fmtDuration(remaining);
 }
 
 // ---------- Rest-Timer (Kreis-Countdown) ----------
@@ -775,7 +779,9 @@ function renderPlanView() {
       return '<div class="plan-ex"><div>' + esc(ex.name) + '<div class="px-muscle">' + esc(ex.muscle) +
         ' · ⏱ ' + fmtTime(ex.rest) + ' Pause' + (ex.note ? ' · ' + esc(ex.note) : '') + '</div></div><div class="px-sets">' + target + '</div></div>';
     }).join('');
-    return '<details class="fold"><summary>' + esc(w.name) + '</summary><div class="fold-body">' + rows + '</div></details>';
+    return '<details class="fold"><summary><span>' + esc(w.name) +
+      '<span class="fold-duration"> · ⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(w)) + '</span></span></summary>' +
+      '<div class="fold-body">' + rows + '</div></details>';
   }).join('');
 
   const forbidden = PLAN.forbidden.map((f) =>
