@@ -100,6 +100,7 @@ $$('.tab').forEach((btn) => {
 
 function switchTab(tab) {
   currentTab = tab;
+  closeHoldTimer();
   $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   render();
 }
@@ -251,7 +252,8 @@ function setInputsHtml(ex, sEx, i) {
     inputs += '<input type="number" inputmode="numeric" data-f="reps" data-i="' + i + '" value="' + (s.reps != null ? s.reps : '') + '" placeholder="Wdh"><span class="unit">Wdh</span>';
   }
   if (ex.metric === 'time') {
-    inputs += '<input type="number" inputmode="numeric" data-f="value" data-i="' + i + '" value="' + (s.value != null ? s.value : '') + '" placeholder="Sek"><span class="unit">Sek</span>';
+    inputs += '<input type="number" inputmode="numeric" data-f="value" data-i="' + i + '" value="' + (s.value != null ? s.value : '') + '" placeholder="Sek"><span class="unit">Sek</span>' +
+      '<button class="set-timer-btn" data-starttimer="' + i + '" aria-label="Timer starten">▶</button>';
   }
   if (ex.metric === 'distance') {
     inputs += '<input type="number" inputmode="numeric" data-f="value" data-i="' + i + '" value="' + (s.value != null ? s.value : '') + '" placeholder="m"><span class="unit">m</span>';
@@ -342,36 +344,20 @@ function renderWorkout() {
     btn.classList.toggle('done', s.done);
     saveSession(session);
 
-    const ex = getWorkout(session.workoutKey).exercises[exIdx];
     const card = $('[data-excard="' + exIdx + '"]');
     if (card) card.classList.toggle('complete', sEx.sets.every((x) => x.done));
     updateSessionProgress();
 
-    if (s.done) {
-      // Neuer Bestwert? Sofort feiern!
-      const now = bestOf(ex, [s]);
-      if (!sEx.prCelebrated && sEx.prevBest != null && now != null && now > sEx.prevBest) {
-        sEx.prCelebrated = true;
-        saveSession(session);
-        const unit = ex.metric === 'time' ? ' Sek' : ex.metric === 'reps' ? ' Wdh' : ' kg';
-        toast('🎉 Neuer Rekord: ' + fmtW(now) + unit + ' bei ' + ex.name + '!');
-        confetti(50);
-      }
+    if (s.done) handleSetCompleted(exIdx, i);
+  }));
 
-      const allDone = session.exercises.every((e) => e.sets.every((x) => x.done));
-      if (allDone) {
-        stopRestTimer();
-        toast('🏁 Alle Sätze geschafft – Training abschließen!');
-      } else if (sEx.sets.every((x) => x.done)) {
-        // Übung fertig -> Übungswechsel: mindestens 2 Min Pause, nächste Übung ansagen
-        const nextEx = session.exercises.find((e) => !e.sets.every((x) => x.done));
-        const nextName = nextEx ? PLAN.exerciseById[nextEx.id].name : '';
-        startRestTimer(Math.max(ex.rest, 120), 'Übung geschafft ✓', nextName ? 'Dann: ' + nextName : '');
-      } else {
-        const doneCount = sEx.sets.filter((x) => x.done).length;
-        startRestTimer(ex.rest, 'Pause · ' + ex.name, 'Dann Satz ' + Math.min(doneCount + 1, sEx.sets.length) + ' von ' + sEx.sets.length);
-      }
-    }
+  $$('.set-timer-btn').forEach((btn) => btn.addEventListener('click', () => {
+    const row = btn.closest('.set-row');
+    const exIdx = +row.dataset.ex;
+    const i = +btn.dataset.starttimer;
+    const inp = $('input[data-f="value"]', row);
+    const wish = inp && inp.value !== '' ? parseInt(inp.value, 10) : null;
+    startHoldTimer(exIdx, i, wish);
   }));
 
   $$('.pain-toggle').forEach((btn) => btn.addEventListener('click', () => {
@@ -385,6 +371,7 @@ function renderWorkout() {
   $('#cancelBtn').addEventListener('click', () => {
     if (confirm('Training wirklich verwerfen? Eingetragene Sätze gehen verloren.')) {
       stopRestTimer();
+      closeHoldTimer();
       stopSessionClock();
       session = null;
       saveSession(null);
@@ -406,6 +393,37 @@ function updateSessionProgress() {
   bar.style.width = p + '%';
   pct.textContent = done + '/' + total + ' Sätze · ' + p + ' %';
   remain.textContent = done >= total ? '🏁 Bereit zum Abschließen' : 'noch ca. ' + fmtDuration(estimateRemainingSeconds(session));
+}
+
+// Gemeinsame Logik, nachdem ein Satz erledigt wurde – egal ob per Häkchen oder Halte-Timer
+function handleSetCompleted(exIdx, i) {
+  const ex = getWorkout(session.workoutKey).exercises[exIdx];
+  const sEx = session.exercises[exIdx];
+  const s = sEx.sets[i];
+
+  // Neuer Bestwert? Sofort feiern!
+  const now = bestOf(ex, [s]);
+  if (!sEx.prCelebrated && sEx.prevBest != null && now != null && now > sEx.prevBest) {
+    sEx.prCelebrated = true;
+    saveSession(session);
+    const unit = ex.metric === 'time' ? ' Sek' : ex.metric === 'reps' ? ' Wdh' : ' kg';
+    toast('🎉 Neuer Rekord: ' + fmtW(now) + unit + ' bei ' + ex.name + '!');
+    confetti(50);
+  }
+
+  const allDone = session.exercises.every((e) => e.sets.every((x) => x.done));
+  if (allDone) {
+    stopRestTimer();
+    toast('🏁 Alle Sätze geschafft – Training abschließen!');
+  } else if (sEx.sets.every((x) => x.done)) {
+    // Übung fertig -> Übungswechsel: mindestens 2 Min Pause, nächste Übung ansagen
+    const nextEx = session.exercises.find((e) => !e.sets.every((x) => x.done));
+    const nextName = nextEx ? PLAN.exerciseById[nextEx.id].name : '';
+    startRestTimer(Math.max(ex.rest, 120), 'Übung geschafft ✓', nextName ? 'Dann: ' + nextName : '');
+  } else {
+    const doneCount = sEx.sets.filter((x) => x.done).length;
+    startRestTimer(ex.rest, 'Pause · ' + ex.name, 'Dann Satz ' + Math.min(doneCount + 1, sEx.sets.length) + ' von ' + sEx.sets.length);
+  }
 }
 
 // ---------- Gesamtuhr (läuft ab Trainingsstart mit) ----------
@@ -477,18 +495,158 @@ function stopRestTimer() {
   $('#restTimer').classList.add('hidden');
 }
 
-function beep() {
+// iOS erlaubt Ton nur aus einer Nutzer-Geste heraus. Deshalb einmal einen
+// gemeinsamen AudioContext beim ersten Tippen anlegen und wiederverwenden –
+// sonst bleiben Töne aus Timer-Intervallen heraus stumm.
+let audioCtx = null;
+
+function initAudio() {
   try {
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.frequency.value = 880;
-    g.gain.setValueAtTime(0.3, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    o.start(); o.stop(ctx.currentTime + 0.6);
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
   } catch (e) { /* Ton nicht verfügbar */ }
+}
+document.addEventListener('touchend', initAudio, { passive: true });
+document.addEventListener('click', initAudio, { passive: true });
+
+function beep(freq, dur, vibratePattern) {
+  const f = freq || 880, d = dur || 0.6;
+  try {
+    if (navigator.vibrate && vibratePattern !== false) navigator.vibrate(vibratePattern || [200, 100, 200]);
+    initAudio();
+    if (!audioCtx) return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
+    o.start(); o.stop(audioCtx.currentTime + d);
+  } catch (e) { /* Ton nicht verfügbar */ }
+}
+
+// ---------- Halte-Timer für Plank & Co. (Vollbild, vom Boden aus lesbar) ----------
+
+const HOLD_R = 92, HOLD_C = 2 * Math.PI * HOLD_R;
+const PREP_SEC = 5;
+
+let holdInterval = null;
+let wakeLock = null;
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) { /* Bildschirm-Sperre nicht beeinflussbar */ }
+}
+
+function releaseWakeLock() {
+  try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
+}
+
+function closeHoldTimer() {
+  if (holdInterval) clearInterval(holdInterval);
+  holdInterval = null;
+  releaseWakeLock();
+  const el = $('#holdTimer');
+  if (el) el.remove();
+}
+
+function startHoldTimer(exIdx, setIdx, wishSeconds) {
+  const ex = getWorkout(session.workoutKey).exercises[exIdx];
+  const sEx = session.exercises[exIdx];
+  const target = Math.max(5, wishSeconds || sEx.sets[setIdx].value || ex.timeTarget);
+
+  closeHoldTimer();
+  stopRestTimer();
+  initAudio();
+  requestWakeLock();
+
+  let phase = 'prep';        // 'prep' -> 'hold'
+  let remaining = PREP_SEC;
+  let paused = false;
+
+  const el = document.createElement('div');
+  el.id = 'holdTimer';
+  el.className = 'hold-timer prep';
+  el.innerHTML =
+    '<div class="ht-inner">' +
+      '<div class="ht-name">' + esc(ex.name) + ' · Satz ' + (setIdx + 1) + ' von ' + sEx.sets.length + '</div>' +
+      '<div class="ht-ring">' +
+        '<svg viewBox="0 0 200 200">' +
+          '<circle class="ht-ring-bg" cx="100" cy="100" r="' + HOLD_R + '" fill="none" stroke-width="10"/>' +
+          '<circle class="ht-ring-fg" id="htRing" cx="100" cy="100" r="' + HOLD_R + '" fill="none" stroke-width="10" stroke-linecap="round" ' +
+            'stroke-dasharray="' + HOLD_C + '" stroke-dashoffset="0" transform="rotate(-90 100 100)"/>' +
+        '</svg>' +
+        '<div class="ht-time" id="htTime"></div>' +
+      '</div>' +
+      '<div class="ht-hint" id="htHint">Position einnehmen …</div>' +
+      '<div class="ht-btns">' +
+        '<button id="htPause">⏸ Pause</button>' +
+        '<button id="htStop" class="primary">Fertig ✓</button>' +
+      '</div>' +
+      '<button id="htCancel" class="ht-cancel">Abbrechen</button>' +
+    '</div>';
+  document.body.appendChild(el);
+
+  const draw = () => {
+    const total = phase === 'prep' ? PREP_SEC : target;
+    $('#htTime').textContent = phase === 'prep' ? String(remaining) : fmtTime(remaining);
+    $('#htRing').style.strokeDashoffset = String(HOLD_C * (1 - remaining / total));
+  };
+  draw();
+
+  const finish = (secondsHeld, geschafft) => {
+    closeHoldTimer();
+    const s = sEx.sets[setIdx];
+    s.value = secondsHeld;
+    s.done = true;
+    saveSession(session);
+    renderWorkout();
+    if (geschafft) {
+      beep(1046, 0.9, [200, 100, 200, 100, 320]);
+      toast('💪 ' + secondsHeld + ' Sekunden geschafft!');
+    } else {
+      beep(660, 0.4, [180]);
+      toast('✓ ' + secondsHeld + ' Sekunden eingetragen');
+    }
+    handleSetCompleted(exIdx, setIdx);
+  };
+
+  $('#htPause').addEventListener('click', () => {
+    paused = !paused;
+    $('#htPause').textContent = paused ? '▶︎ Weiter' : '⏸ Pause';
+    $('#htHint').textContent = paused ? 'Pausiert' : (phase === 'prep' ? 'Position einnehmen …' : 'Halten – ruhig weiteratmen');
+  });
+
+  $('#htStop').addEventListener('click', () => {
+    if (phase === 'prep') { closeHoldTimer(); return; }
+    finish(Math.max(1, target - remaining), false);
+  });
+
+  $('#htCancel').addEventListener('click', closeHoldTimer);
+
+  holdInterval = setInterval(() => {
+    if (paused) return;
+    remaining--;
+
+    if (phase === 'prep') {
+      if (remaining <= 0) {
+        phase = 'hold';
+        remaining = target;
+        el.classList.remove('prep');
+        $('#htHint').textContent = 'Halten – ruhig weiteratmen';
+        beep(880, 0.35, [150]);
+      } else {
+        beep(660, 0.1, false);
+      }
+      draw();
+      return;
+    }
+
+    if (remaining <= 0) { finish(target, true); return; }
+    if (remaining <= 3) beep(660, 0.1, false);
+    draw();
+  }, 1000);
 }
 
 // ---------- Abschluss / Reha / Zusammenfassung ----------
@@ -497,6 +655,7 @@ function promptRehab() {
   const anySet = session.exercises.some((e) => e.sets.some((s) => s.done));
   if (!anySet) { alert('Du hast noch keinen Satz abgehakt. Hake mindestens einen Satz ab (✓), bevor du abschließt.'); return; }
   stopRestTimer();
+  closeHoldTimer();
 
   const items = PLAN.rehab.map((it) =>
     '<label><input type="checkbox" data-rh="' + it.id + '"><span class="ok">' + esc(it.name) + '</span></label>'
