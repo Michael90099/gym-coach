@@ -1,13 +1,13 @@
 // GymCoach Service Worker – Offline-Cache
-const CACHE = 'gymcoach-v10';
+const CACHE = 'gymcoach-v12';
 const ASSETS = [
   './',
   './index.html',
-  './styles.css?v=10',
-  './app.js?v=10',
-  './plan.js?v=10',
-  './coach.js?v=10',
-  './storage.js?v=10',
+  './styles.css?v=12',
+  './app.js?v=12',
+  './plan.js?v=12',
+  './coach.js?v=12',
+  './storage.js?v=12',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

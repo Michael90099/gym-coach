@@ -230,8 +230,10 @@ function renderHome() {
 
 // ---------- Workout-Session ----------
 
-// Baut den Session-Eintrag einer Übung inkl. Empfehlung und Vorbefüllung
-function buildSessionExercise(ex) {
+// Baut den Session-Eintrag einer Übung inkl. Empfehlung und Vorbefüllung.
+// Rechnet mit den Gewichtsschritten, die es am Gerät wirklich gibt.
+function buildSessionExercise(planEx) {
+  const ex = effectiveExercise(planEx, state.steps);
   const hist = exerciseHistory(state, ex.id);
   const rec = getRecommendation(ex, hist);
   const lastSets = hist[0] ? hist[0].sets : [];
@@ -271,7 +273,7 @@ function setInputsHtml(ex, sEx, i) {
   const w = s.weight != null ? s.weight : '';
   let inputs = '';
   if (ex.metric === 'weight' || ex.metric === 'distance') {
-    inputs += '<input type="number" inputmode="decimal" step="0.5" data-f="weight" data-i="' + i + '" value="' + w + '" placeholder="kg">' +
+    inputs += '<input type="number" inputmode="decimal" step="' + stepOf(ex, state.steps) + '" data-f="weight" data-i="' + i + '" value="' + w + '" placeholder="kg">' +
       '<span class="unit' + (ex.perHand ? ' per-hand' : '') + '">' + weightUnit(ex) + '</span>';
   }
   if (ex.metric === 'weight' || ex.metric === 'reps') {
@@ -331,7 +333,7 @@ function renderWorkout() {
     const complete = sEx.sets.length > 0 && sEx.sets.every((s) => s.done);
     return '<div class="card exercise-card' + (complete ? ' complete' : '') + '" data-excard="' + exIdx + '">' +
       '<div class="exercise-head"><h3>' + esc(ex.name) + '</h3>' +
-        (hasVariants ? '<button class="swap-btn" data-swap="' + exIdx + '" aria-label="Übung tauschen">⇄</button>' : '') +
+        '<button class="swap-btn" data-swap="' + exIdx + '" aria-label="Übung anpassen">' + (hasVariants ? '⇄' : '⚙') + '</button>' +
         '<span class="target">' + target + ' · ⏱ ' + fmtTime(ex.rest) + '</span></div>' +
       (ex.note ? '<div class="exercise-note">⚠️ ' + esc(ex.note) + '</div>' : '') +
       '<div class="rec' + recClass + '">🧠 ' + esc(sEx.rec.message) + '</div>' +
@@ -404,7 +406,7 @@ function renderWorkout() {
 
   $$('.swap-btn').forEach((btn) => btn.addEventListener('click', () => {
     const exIdx = +btn.dataset.swap;
-    openVariantPicker(PLAN.slotByExerciseId[session.exercises[exIdx].id].id, exIdx);
+    openExerciseSettings(PLAN.slotByExerciseId[session.exercises[exIdx].id].id, exIdx);
   }));
 
   $$('[data-pain]').forEach((btn) => btn.addEventListener('click', () => {
@@ -439,16 +441,19 @@ function renderWorkout() {
   });
 }
 
-// ---------- Übungs-Varianten tauschen ----------
+// ---------- Übung anpassen: Variante & Gewichtsschritt ----------
 
-// exIdx nur setzen, wenn aus einem laufenden Training heraus getauscht wird
-function openVariantPicker(slotId, exIdx) {
+// exIdx nur setzen, wenn aus einem laufenden Training heraus geöffnet wird
+function openExerciseSettings(slotId, exIdx) {
   const slot = findSlot(slotId);
   if (!slot) return;
   if (!state.variants) state.variants = {};
+  if (!state.steps) state.steps = {};
   const currentId = state.variants[slotId] || slot.id;
+  const current = PLAN.exerciseById[currentId];
+  const hasVariants = (slot.alternatives || []).length > 0;
 
-  const items = variantsOf(slot).map((v) => {
+  const items = hasVariants ? variantsOf(slot).map((v) => {
     const reps = v.metric === 'time' ? v.sets + '×' + v.timeTarget + ' Sek'
       : v.sets + '×' + (v.repsMin === v.repsMax ? v.repsMax : v.repsMin + '–' + v.repsMax);
     return '<button class="variant-opt' + (v.id === currentId ? ' sel' : '') + '" data-variant="' + v.id + '">' +
@@ -456,16 +461,47 @@ function openVariantPicker(slotId, exIdx) {
       (v.variantNote ? '<div class="vo-desc">' + esc(v.variantNote) + '</div>' : '') +
       '<div class="vo-meta">' + reps + ' · ⏱ ' + fmtTime(v.rest) + ' Pause</div>' +
     '</button>';
-  }).join('');
+  }).join('') : '';
+
+  // Gewichtsschritt nur bei Übungen mit Gewicht
+  const usesWeight = current.metric === 'weight' || current.metric === 'distance';
+  const activeStep = stepOf(current, state.steps);
+  const stepChips = usesWeight ? STEP_OPTIONS.map((s) =>
+    '<button class="chip-btn' + (s === activeStep ? ' on' : '') + '" data-step="' + s + '">' + fmtW(s) + ' kg</button>'
+  ).join('') : '';
 
   showOverlay(
-    '<h2>⇄ Übung tauschen</h2>' +
-    '<p class="muted small">Deine Wahl wird gespeichert und gilt auch für die nächsten Trainings. Jede Variante hat ihren eigenen Verlauf – die Gewichte werden also nicht vermischt.</p>' +
-    '<div class="variant-list">' + items + '</div>' +
-    '<button class="btn secondary" id="closeVariant">Schließen</button>'
+    '<h2>⚙ ' + esc(current.name) + '</h2>' +
+    (hasVariants
+      ? '<div class="section-label" style="margin-top:12px">Variante</div>' +
+        '<p class="muted small">Gilt auch für die nächsten Trainings. Jede Variante hat ihren eigenen Verlauf – die Gewichte werden nicht vermischt.</p>' +
+        '<div class="variant-list">' + items + '</div>'
+      : '') +
+    (usesWeight
+      ? '<div class="section-label">Gewichtsschritt im Studio</div>' +
+        '<p class="muted small">Kleinster Sprung, den du an diesem Gerät einstellen kannst (' +
+        esc(EQUIPMENT_LABELS[current.equipment] || 'Gerät') + '). Der Coach schlägt dann nur noch Gewichte vor, die es wirklich gibt – ' +
+        'aktuell in ' + fmtW(incrementOf(current, activeStep)) + '-kg-Sprüngen.</p>' +
+        '<div class="cr-chips step-chips">' + stepChips + '</div>'
+      : '') +
+    '<button class="btn secondary" id="closeVariant" style="margin-top:16px">Schließen</button>'
   );
 
   $('#closeVariant').addEventListener('click', hideOverlay);
+
+  $$('[data-step]').forEach((b) => b.addEventListener('click', () => {
+    const newStep = parseFloat(b.dataset.step);
+    state.steps[currentId] = newStep;
+    saveState(state);
+    // Läuft die Übung gerade und ist noch nichts eingetragen, Empfehlung neu rechnen
+    if (exIdx != null && session && !session.exercises[exIdx].sets.some((s) => s.done)) {
+      session.exercises[exIdx] = buildSessionExercise(PLAN.exerciseById[currentId]);
+      saveSession(session);
+    }
+    hideOverlay();
+    render();
+    toast('⚙ Schritte à ' + fmtW(newStep) + ' kg');
+  }));
   $$('.variant-opt').forEach((b) => b.addEventListener('click', () => {
     const newId = b.dataset.variant;
     if (newId === currentId) { hideOverlay(); return; }
@@ -1091,7 +1127,7 @@ function renderPlanView() {
         : ex.metric === 'distance' ? ex.sets + '×' + ex.distTarget + 'm'
         : ex.sets + '×' + (ex.repsMin === ex.repsMax ? ex.repsMax : ex.repsMin + '–' + ex.repsMax);
       return '<div class="plan-ex"><div>' + esc(ex.name) +
-        (hasVariants ? ' <button class="swap-btn small" data-swapslot="' + slot.id + '" aria-label="Übung tauschen">⇄</button>' : '') +
+        ' <button class="swap-btn small" data-swapslot="' + slot.id + '" aria-label="Übung anpassen">' + (hasVariants ? '⇄' : '⚙') + '</button>' +
         '<div class="px-muscle">' + esc(ex.muscle) +
         ' · ⏱ ' + fmtTime(ex.rest) + ' Pause' + (ex.note ? ' · ' + esc(ex.note) : '') + '</div></div>' +
         '<div class="px-sets">' + target + '</div></div>';
@@ -1121,7 +1157,7 @@ function renderPlanView() {
 
   $$('[data-swapslot]').forEach((btn) => btn.addEventListener('click', (e) => {
     e.preventDefault();
-    openVariantPicker(btn.dataset.swapslot, null);
+    openExerciseSettings(btn.dataset.swapslot, null);
   }));
 }
 

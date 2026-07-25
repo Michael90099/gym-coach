@@ -9,6 +9,7 @@ function defaultState() {
     points: 0,
     badges: [],          // Badge-IDs
     variants: {},        // gewählte Übungs-Variante je Slot: { slotId: exerciseId }
+    steps: {},           // Gewichtsschritt je Übung im eigenen Studio: { exerciseId: kg }
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen
     rehabCount: 0,

@@ -229,7 +229,10 @@ main { padding: 16px; max-width: 560px; margin: 0 auto; }
 .swap-btn:active { transform: scale(0.9); }
 .swap-btn.small { width: 26px; height: 26px; font-size: 12px; vertical-align: middle; margin-left: 4px; }
 
-.variant-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 4px; }
+.step-chips { flex-wrap: wrap; margin-top: 4px; }
+.step-chips .chip-btn { font-size: 13.5px; padding: 9px 13px; }
+
+.variant-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 4px; }
 .variant-opt {
   text-align: left; width: 100%; padding: 13px 14px; border-radius: var(--radius);
   background: var(--surface2); border: 1px solid var(--border); transition: all 0.15s;

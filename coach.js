@@ -56,8 +56,20 @@ const RIR_OPTIONS = [
   { rir: 3, short: '3+', desc: 'Noch reichlich Luft – da geht mehr Gewicht' },
 ];
 
-function roundToIncrement(value) {
-  return Math.max(0, Math.round(value * 2) / 2); // auf 0,5 kg runden
+// Rastert ein Gewicht auf das, was am Gerät wirklich einstellbar ist.
+// dir: 'down' beim Reduzieren (lieber etwas leichter), sonst nächstgelegene Stufe.
+function snapWeight(value, step, dir) {
+  const s = step || 2.5;
+  const raw = value / s;
+  const n = dir === 'down' ? Math.floor(raw + 1e-9) : dir === 'up' ? Math.ceil(raw - 1e-9) : Math.round(raw);
+  return Math.max(0, Math.round(n * s * 100) / 100);
+}
+
+// Reduktion, die garantiert unter dem letzten Gewicht landet (mindestens eine Stufe)
+function reduceWeight(lastWeight, factor, step) {
+  let w = snapWeight(lastWeight * factor, step, 'down');
+  if (w >= lastWeight) w = snapWeight(lastWeight - step, step, 'down');
+  return Math.max(0, w);
 }
 
 // Empfehlung für die nächste Einheit einer Übung.
@@ -82,13 +94,15 @@ function getRecommendation(ex, history) {
   // Schmerz-Monitoring: ab 4/10 wird die Last reduziert, 1–3/10 heißt Gewicht halten
   if (last.painLevel === 'sharp') {
     if (ex.metric === 'weight' && lastWeight != null) {
-      const reduced = roundToIncrement(lastWeight * 0.85);
+      const reduced = reduceWeight(lastWeight, 0.85, ex.step);
       return {
         weight: reduced,
         increase: false,
         caution: true,
         target: ex.repsMax,
-        message: `Letztes Mal stechender Schmerz (4+). Heute ca. ${fmtW(reduced)} kg (−15 %), sauber und kontrolliert. Wird es wieder stechend: Übung heute auslassen.`,
+        message: reduced === 0
+          ? 'Letztes Mal stechender Schmerz (4+). Heute ohne Zusatzgewicht oder nur mit dem Band – erst Schmerzfreiheit, dann wieder Last.'
+          : `Letztes Mal stechender Schmerz (4+). Heute runter auf ${fmtW(reduced)} kg, sauber und kontrolliert. Wird es wieder stechend: Übung heute auslassen.`,
       };
     }
     return { weight: null, increase: false, caution: true, message: 'Letztes Mal deutlicher Schmerz – heute bewusst leicht und kontrolliert. Bei stechendem Schmerz sofort abbrechen.' };
@@ -116,7 +130,7 @@ function getRecommendation(ex, history) {
   if (ex.metric === 'distance') {
     const w = lastWeight;
     if (topReached && w != null) {
-      const next = roundToIncrement(w + ex.increment, ex.increment);
+      const next = snapWeight(w + ex.increment, ex.step);
       return { weight: next, increase: true, message: `Alle ${ex.sets}×${ex.distTarget} m geschafft – heute ${fmtW(next)} kg pro Hand! 💪` };
     }
     return { weight: w, increase: false, message: `Heute wieder ${fmtW(w)} kg – Ziel: ${ex.sets}×${ex.distTarget} m mit stabilem Rumpf.` };
@@ -146,7 +160,7 @@ function getRecommendation(ex, history) {
   if (readyToIncrease) {
     // Autoregulation: war zuletzt noch viel Reserve, darf der Schritt größer sein
     const bigStep = !isShoulder && last.rir != null && last.rir >= 3;
-    const next = roundToIncrement(lastWeight + (bigStep ? ex.increment * 2 : ex.increment));
+    const next = snapWeight(lastWeight + (bigStep ? ex.increment * 2 : ex.increment), ex.step);
     return {
       weight: next,
       increase: true,
@@ -165,14 +179,16 @@ function getRecommendation(ex, history) {
 
   // Stillstand: mehrere Einheiten beim selben Gewicht ohne das obere Ende zu erreichen
   if (stallCount(ex, history) >= 3) {
-    const deload = roundToIncrement(lastWeight * 0.9);
-    return {
-      weight: deload,
-      increase: false,
-      deload: true,
-      target: ex.repsMax,
-      message: `Drei Einheiten auf ${fmtW(lastWeight)} kg festgefahren. Heute bewusst zurück auf ${fmtW(deload)} kg (−10 %) und sauber wieder hocharbeiten – so löst man einen Stillstand.`,
-    };
+    const deload = reduceWeight(lastWeight, 0.9, ex.step);
+    if (deload > 0 && deload < lastWeight) {
+      return {
+        weight: deload,
+        increase: false,
+        deload: true,
+        target: ex.repsMax,
+        message: `Drei Einheiten auf ${fmtW(lastWeight)} kg festgefahren. Heute bewusst zurück auf ${fmtW(deload)} kg und sauber wieder hocharbeiten – so löst man einen Stillstand.`,
+      };
+    }
   }
 
   const worst = Math.min(...last.sets.map((s) => s.reps || 0));
@@ -211,8 +227,9 @@ function maxWeight(sets) {
   return ws.length ? Math.max(...ws) : null;
 }
 
+// Auf 2 Nachkommastellen – nicht auf 0,5 runden, sonst würde aus 1,25 kg fälschlich 1,5
 function fmtW(w) {
-  return w == null ? '–' : (Math.round(w * 2) / 2).toString().replace('.', ',');
+  return w == null ? '–' : (Math.round(w * 100) / 100).toString().replace('.', ',');
 }
 
 // ---------- Punkte ----------

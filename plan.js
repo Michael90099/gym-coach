@@ -151,6 +151,28 @@ const REST_OVERRIDES = {
   c_farmerwalk: 120,                                          // Griffkraft & Atmung brauchen länger
 };
 
+// Gewichtsschritte, die am Gerät tatsächlich einstellbar sind.
+// Steckgewicht-Maschinen springen meist in 5-kg-Stufen, Kabelzüge in 2,5,
+// Langhanteln in 2,5 (2× 1,25 kg) und Kurzhanteln in 2-kg-Sprüngen.
+// Studios unterscheiden sich – deshalb pro Übung in der App änderbar.
+const STEP_OPTIONS = [1, 1.25, 2, 2.5, 5, 10];
+const STEP_DEFAULTS = { machine: 5, cable: 2.5, barbell: 2.5, dumbbell: 2 };
+const EQUIPMENT_LABELS = { machine: 'Maschine', cable: 'Kabelzug', barbell: 'Langhantel', dumbbell: 'Kurzhantel' };
+const EQUIPMENT = {
+  a_beinpresse: 'machine', a_rdl: 'barbell', a_waden: 'machine',
+  a_rudern: 'machine', a_latzug: 'machine', a_facepulls: 'cable',
+  a_brustpresse: 'machine', a_seitheben: 'dumbbell', a_extrot: 'cable',
+  a_hammercurls: 'dumbbell', a_trizeps: 'cable',
+  b_splitsquat: 'dumbbell', b_walking_lunges: 'dumbbell', b_reverse_lunges: 'dumbbell',
+  b_beinbeuger: 'machine', b_beinstrecker: 'machine', b_kabelrudern: 'cable',
+  b_revbutterfly: 'machine', b_yraises: 'dumbbell', b_scaption: 'dumbbell',
+  b_szcurls: 'barbell', b_trizeps: 'cable', b_pallof: 'cable',
+  c_kniebeuge: 'barbell', c_hipthrust: 'barbell', c_latzug_eng: 'machine',
+  c_einarm_rudern: 'cable', c_facepulls: 'cable', c_schraegbank: 'machine',
+  c_extrot: 'cable', c_seitheben: 'dumbbell', c_bizeps: 'cable', c_trizeps: 'cable',
+  c_farmerwalk: 'dumbbell',
+};
+
 // Ein Platz im Plan ("Slot") kann mehrere gleichwertige Varianten haben.
 // Die Basis-Übung plus ihre Alternativen als flache Liste.
 function variantsOf(slot) {
@@ -159,7 +181,11 @@ function variantsOf(slot) {
 
 for (const w of PLAN.workouts) {
   for (const slot of w.exercises) {
-    for (const v of variantsOf(slot)) v.rest = REST_OVERRIDES[v.id] || REST_DEFAULTS[v.group];
+    for (const v of variantsOf(slot)) {
+      v.rest = REST_OVERRIDES[v.id] || REST_DEFAULTS[v.group];
+      v.equipment = EQUIPMENT[v.id] || 'machine';
+      v.step = STEP_DEFAULTS[v.equipment];
+    }
   }
 }
 
@@ -200,4 +226,23 @@ function resolvedExercises(workout, variants) {
 // Einheit fürs Eingabefeld – macht sichtbar, ob pro Hand oder gesamt gezählt wird
 function weightUnit(ex) {
   return ex.perHand ? 'kg/Hand' : 'kg';
+}
+
+// Kleinster Gewichtsschritt dieser Übung – Studio-Einstellung schlägt Standard
+function stepOf(ex, steps) {
+  const custom = steps && steps[ex.id];
+  return custom || ex.step || 2.5;
+}
+
+// Steigerungsschritt: mindestens ein Geräteschritt und immer ein Vielfaches davon,
+// damit nie ein Gewicht vorgeschlagen wird, das es am Gerät nicht gibt.
+function incrementOf(ex, step) {
+  const wish = ex.increment || step;
+  return Math.round(Math.max(1, Math.ceil(wish / step - 1e-9)) * step * 100) / 100;
+}
+
+// Übung mit den tatsächlich gültigen Gewichtsschritten
+function effectiveExercise(ex, steps) {
+  const step = stepOf(ex, steps);
+  return Object.assign({}, ex, { step, increment: incrementOf(ex, step) });
 }
