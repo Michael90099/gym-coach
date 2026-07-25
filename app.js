@@ -250,7 +250,8 @@ function buildSessionExercise(ex) {
         : ex.metric === 'distance' ? ex.distTarget : null,
       done: false,
     })),
-    pain: false,
+    painLevel: 'none',
+    rir: null,           // Reserve im Tank nach dem letzten Satz (Autoregulation)
   };
 }
 
@@ -270,7 +271,8 @@ function setInputsHtml(ex, sEx, i) {
   const w = s.weight != null ? s.weight : '';
   let inputs = '';
   if (ex.metric === 'weight' || ex.metric === 'distance') {
-    inputs += '<input type="number" inputmode="decimal" step="0.5" data-f="weight" data-i="' + i + '" value="' + w + '" placeholder="kg"><span class="unit">kg</span>';
+    inputs += '<input type="number" inputmode="decimal" step="0.5" data-f="weight" data-i="' + i + '" value="' + w + '" placeholder="kg">' +
+      '<span class="unit' + (ex.perHand ? ' per-hand' : '') + '">' + weightUnit(ex) + '</span>';
   }
   if (ex.metric === 'weight' || ex.metric === 'reps') {
     inputs += '<input type="number" inputmode="numeric" data-f="reps" data-i="' + i + '" value="' + (s.reps != null ? s.reps : '') + '" placeholder="Wdh"><span class="unit">Wdh</span>';
@@ -310,8 +312,20 @@ function renderWorkout() {
     ).join('');
 
     const painHtml = ex.painCheck
-      ? '<div class="pain-row"><span>Stechender Schmerz in der Schulter?</span>' +
-        '<button class="pain-toggle' + (sEx.pain ? ' on' : '') + '" data-pain="' + exIdx + '">' + (sEx.pain ? '⚠️ Ja' : 'Nein') + '</button></div>'
+      ? '<div class="check-row"><span class="cr-label">Schulter dabei?</span><div class="cr-chips">' +
+        PLAN.painLevels.map((p) =>
+          '<button class="chip-btn pain-' + p.key + ((sEx.painLevel || 'none') === p.key ? ' on' : '') + '" ' +
+          'data-pain="' + exIdx + '" data-level="' + p.key + '" title="' + esc(p.desc) + '">' + esc(p.short) + '</button>'
+        ).join('') + '</div></div>'
+      : '';
+
+    // Reserve im Tank – nur bei Grundübungen, hält den Aufwand im Studio klein
+    const rirHtml = ex.group === 'main' && ex.metric === 'weight'
+      ? '<div class="check-row"><span class="cr-label">Im Tank geblieben?</span><div class="cr-chips">' +
+        RIR_OPTIONS.map((o) =>
+          '<button class="chip-btn' + (sEx.rir === o.rir ? ' on' : '') + '" ' +
+          'data-rir="' + exIdx + '" data-rirval="' + o.rir + '" title="' + esc(o.desc) + '">' + esc(o.short) + '</button>'
+        ).join('') + '</div></div>'
       : '';
 
     const complete = sEx.sets.length > 0 && sEx.sets.every((s) => s.done);
@@ -321,7 +335,7 @@ function renderWorkout() {
         '<span class="target">' + target + ' · ⏱ ' + fmtTime(ex.rest) + '</span></div>' +
       (ex.note ? '<div class="exercise-note">⚠️ ' + esc(ex.note) + '</div>' : '') +
       '<div class="rec' + recClass + '">🧠 ' + esc(sEx.rec.message) + '</div>' +
-      setsHtml + painHtml +
+      setsHtml + rirHtml + painHtml +
     '</div>';
   }).join('');
 
@@ -393,9 +407,20 @@ function renderWorkout() {
     openVariantPicker(PLAN.slotByExerciseId[session.exercises[exIdx].id].id, exIdx);
   }));
 
-  $$('.pain-toggle').forEach((btn) => btn.addEventListener('click', () => {
+  $$('[data-pain]').forEach((btn) => btn.addEventListener('click', () => {
     const exIdx = +btn.dataset.pain;
-    session.exercises[exIdx].pain = !session.exercises[exIdx].pain;
+    const sEx = session.exercises[exIdx];
+    // Nochmal tippen hebt die Auswahl wieder auf
+    sEx.painLevel = sEx.painLevel === btn.dataset.level ? 'none' : btn.dataset.level;
+    saveSession(session);
+    renderWorkout();
+  }));
+
+  $$('[data-rir]').forEach((btn) => btn.addEventListener('click', () => {
+    const exIdx = +btn.dataset.rir;
+    const sEx = session.exercises[exIdx];
+    const val = parseFloat(btn.dataset.rirval);
+    sEx.rir = sEx.rir === val ? null : val;
     saveSession(session);
     renderWorkout();
   }));
@@ -785,7 +810,9 @@ function finishWorkout(rehabDone) {
         id: sEx.id,
         name: ex.name,
         sets: sEx.sets,
-        pain: sEx.pain,
+        painLevel: sEx.painLevel || 'none',
+        pain: (sEx.painLevel || 'none') === 'sharp',   // für Diagramm & alte Auswertungen
+        rir: sEx.rir,
         increased: prevBest != null && nowBest != null && nowBest > prevBest,
       };
     }),
@@ -819,7 +846,7 @@ function bestOf(ex, sets) {
 
 function showSummary(log, score, newBadges, gapDays, prevLevel) {
   const anyIncrease = log.exercises.some((e) => e.increased);
-  const anyPain = log.exercises.some((e) => e.pain);
+  const anyPain = log.exercises.some((e) => painLevelOf(e) !== 'none');
   let quote;
   if (anyPain) quote = pickQuote(QUOTES.finishPain);
   else if (anyIncrease) quote = pickQuote(QUOTES.finishIncrease);
@@ -955,6 +982,15 @@ function renderProgress() {
     '</div>' +
     '<div class="section-label">Abzeichen (' + state.badges.length + '/' + BADGES.length + ')</div>' +
     '<div class="badge-grid">' + badgeGrid + '</div>' +
+    '<div class="section-label">Wochenziel</div>' +
+    '<div class="card">' +
+      '<p class="muted small">Wie viele Trainings schaffst du pro Woche? Danach richten sich Streak und Wochenanzeige. ' +
+      'Die Reihenfolge A → B → C läuft unabhängig davon weiter – du machst immer das, was als Nächstes dran ist.</p>' +
+      '<div class="workout-picker" style="margin-top:10px">' +
+        '<button data-goal="2" class="' + (weeklyGoalOf(state) === 2 ? 'sel' : '') + '">2 pro Woche</button>' +
+        '<button data-goal="3" class="' + (weeklyGoalOf(state) === 3 ? 'sel' : '') + '">3 pro Woche</button>' +
+      '</div>' +
+    '</div>' +
     '<div class="section-label">Daten</div>' +
     '<div class="card">' +
       '<p class="muted small">Deine Daten liegen nur auf diesem Gerät. Mach regelmäßig ein Backup!</p>' +
@@ -964,6 +1000,13 @@ function renderProgress() {
       '</div>' +
       '<input type="file" id="importFile" accept="application/json" class="hidden">' +
     '</div>';
+
+  $$('[data-goal]').forEach((b) => b.addEventListener('click', () => {
+    state.weeklyGoal = +b.dataset.goal;
+    saveState(state);
+    renderProgress();
+    toast('🎯 Wochenziel: ' + state.weeklyGoal + " Trainings");
+  }));
 
   $('#exSelect').addEventListener('change', (e) => { progressExId = e.target.value; drawChart(); });
   $('#exportBtn').addEventListener('click', () => exportData(state));

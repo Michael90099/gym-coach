@@ -1,8 +1,8 @@
 // GymCoach – Trainingsplan-Daten
-// Ganzkörperplan mit Fokus Schulter-Impingement (3x/Woche, Rotation A -> B -> C)
+// Ganzkörperplan mit Fokus Schulter-Impingement (2–3x/Woche, Rotation A -> B -> C)
 
 const PLAN = {
-  weeklyGoal: 3,
+  weeklyGoal: 3,       // Standard; über die Einstellungen auf 2 änderbar
 
   warmup: [
     { id: 'wu_cardio', name: '5 Min Ergometer oder Laufband' },
@@ -24,7 +24,10 @@ const PLAN = {
 
   // metric: 'weight' (Gewicht+Wdh) | 'reps' (nur Wdh) | 'time' (Sekunden) | 'distance' (Meter, mit Gewicht)
   // group: 'main' (Grundübung) | 'shoulder' (Schulter/Reha -> konservative Steigerung) | 'core'
-  // painCheck: nach der Übung nach stechendem Schmerz fragen
+  // painCheck: nach der Übung nach Schulterschmerz fragen
+  // perHand: Gewicht wird pro Hand/Arm eingetragen, nicht als Gesamtgewicht
+  // Wiederholungs-Spannen folgen den Intensitätsregeln: 8–12 bei Grundübungen,
+  // 12–20 bei Schulter-/Rehaübungen. Erst Wdh. bis ans obere Ende, dann Gewicht rauf.
   workouts: [
     {
       key: 'A',
@@ -32,61 +35,61 @@ const PLAN = {
       exercises: [
         { id: 'a_beinpresse', name: 'Beinpresse', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 12, metric: 'weight', group: 'main', increment: 5 },
         { id: 'a_rdl', name: 'Rumänisches Kreuzheben', muscle: 'Beine', sets: 3, repsMin: 8, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5 },
-        { id: 'a_waden', name: 'Wadenheben', muscle: 'Beine', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'main', increment: 5 },
-        { id: 'a_rudern', name: 'Brustgestütztes Rudern', muscle: 'Rücken', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
-        { id: 'a_latzug', name: 'Latziehen neutraler Griff', muscle: 'Rücken', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
-        { id: 'a_facepulls', name: 'Face Pulls', muscle: 'Rücken', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 2.5, painCheck: true },
-        { id: 'a_brustpresse', name: 'Maschinen-Brustpresse', muscle: 'Brust', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5, painCheck: true, note: 'Ellbogen ca. 45° – nicht weit ausfahren' },
-        { id: 'a_seitheben', name: 'Seitheben', muscle: 'Schulter', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true, note: 'Nur bis Schulterhöhe, kontrolliert' },
-        { id: 'a_extrot', name: 'Außenrotation Kabel', muscle: 'Schulter', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true },
-        { id: 'a_hammercurls', name: 'Hammer Curls', muscle: 'Arme', sets: 2, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2 },
-        { id: 'a_trizeps', name: 'Trizeps Seil', muscle: 'Arme', sets: 2, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5 },
+        { id: 'a_waden', name: 'Wadenheben', muscle: 'Beine', sets: 3, repsMin: 15, repsMax: 20, metric: 'weight', group: 'main', increment: 5 },
+        { id: 'a_rudern', name: 'Brustgestütztes Rudern', muscle: 'Rücken', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
+        { id: 'a_latzug', name: 'Latziehen neutraler Griff', muscle: 'Rücken', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
+        { id: 'a_facepulls', name: 'Face Pulls', muscle: 'Rücken', sets: 3, repsMin: 15, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 2.5, painCheck: true },
+        { id: 'a_brustpresse', name: 'Maschinen-Brustpresse', muscle: 'Brust', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, painCheck: true, note: 'Ellbogen ca. 45° – nicht weit ausfahren' },
+        { id: 'a_seitheben', name: 'Seitheben', muscle: 'Schulter', sets: 3, repsMin: 12, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 1, perHand: true, painCheck: true, note: 'Nur bis Schulterhöhe, kontrolliert' },
+        { id: 'a_extrot', name: 'Außenrotation Kabel', muscle: 'Schulter', sets: 3, repsMin: 12, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true },
+        { id: 'a_hammercurls', name: 'Hammer Curls', muscle: 'Arme', sets: 2, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2, perHand: true },
+        { id: 'a_trizeps', name: 'Trizeps Seil', muscle: 'Arme', sets: 2, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5 },
         { id: 'a_plank', name: 'Plank', muscle: 'Core', sets: 3, timeTarget: 40, metric: 'time', group: 'core', increment: 5 },
-        { id: 'a_deadbug', name: 'Dead Bug', muscle: 'Core', sets: 3, repsMin: 10, repsMax: 10, metric: 'reps', group: 'core', increment: 2 },
+        { id: 'a_deadbug', name: 'Dead Bug', muscle: 'Core', sets: 3, repsMin: 10, repsMax: 15, metric: 'reps', group: 'core', increment: 2 },
       ],
     },
     {
       key: 'B',
       name: 'Ganzkörper B',
       exercises: [
-        { id: 'b_splitsquat', name: 'Bulgarian Split Squat', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2,
+        { id: 'b_splitsquat', name: 'Bulgarian Split Squat', muscle: 'Beine', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2, perHand: true,
           variantNote: 'Original – am anspruchsvollsten, viel Gleichgewicht nötig',
           alternatives: [
-            { id: 'b_walking_lunges', name: 'Ausfallschritte im Gehen', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 12, metric: 'weight', group: 'main', increment: 2,
-              note: 'Gewicht pro Hand · 10–12 Schritte pro Bein · Oberkörper aufrecht',
+            { id: 'b_walking_lunges', name: 'Ausfallschritte im Gehen', muscle: 'Beine', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2, perHand: true,
+              note: 'Wiederholungen pro Bein · Oberkörper aufrecht',
               variantNote: 'Kommt dem Split Squat am nächsten, aber leichter zu stabilisieren' },
-            { id: 'b_reverse_lunges', name: 'Rückwärts-Ausfallschritte', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 12, metric: 'weight', group: 'main', increment: 2,
-              note: 'Gewicht pro Hand · am Stand, 10–12 pro Bein',
+            { id: 'b_reverse_lunges', name: 'Rückwärts-Ausfallschritte', muscle: 'Beine', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2, perHand: true,
+              note: 'Am Stand · Wiederholungen pro Bein',
               variantNote: 'Knieschonend und braucht kaum Platz' },
           ] },
-        { id: 'b_beinbeuger', name: 'Beinbeuger Maschine', muscle: 'Beine', sets: 3, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5 },
-        { id: 'b_beinstrecker', name: 'Beinstrecker', muscle: 'Beine', sets: 2, repsMin: 15, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5 },
-        { id: 'b_kabelrudern', name: 'Kabelrudern', muscle: 'Rücken', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
-        { id: 'b_revbutterfly', name: 'Reverse Butterfly', muscle: 'Rücken', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 2.5, painCheck: true },
+        { id: 'b_beinbeuger', name: 'Beinbeuger Maschine', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5 },
+        { id: 'b_beinstrecker', name: 'Beinstrecker', muscle: 'Beine', sets: 2, repsMin: 12, repsMax: 20, metric: 'weight', group: 'main', increment: 2.5 },
+        { id: 'b_kabelrudern', name: 'Kabelrudern', muscle: 'Rücken', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
+        { id: 'b_revbutterfly', name: 'Reverse Butterfly', muscle: 'Rücken', sets: 3, repsMin: 12, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 2.5, painCheck: true },
         { id: 'b_liegestuetze', name: 'Liegestütze (Multipresse/erhöht)', muscle: 'Brust', sets: 3, repsMin: 10, repsMax: 15, metric: 'reps', group: 'main', increment: 1, painCheck: true },
-        { id: 'b_yraises', name: 'Y-Raises', muscle: 'Schulter', sets: 3, repsMin: 12, repsMax: 12, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true },
-        { id: 'b_scaption', name: 'Scaption Raises (30° vor)', muscle: 'Schulter', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true },
-        { id: 'b_szcurls', name: 'SZ-Curls', muscle: 'Arme', sets: 2, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5 },
-        { id: 'b_trizeps', name: 'Trizeps Seildrücken', muscle: 'Arme', sets: 2, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, note: 'Overhead nur wenn komplett schmerzfrei' },
-        { id: 'b_pallof', name: 'Pallof Press', muscle: 'Core', sets: 3, repsMin: 12, repsMax: 12, metric: 'weight', group: 'core', increment: 2.5 },
-        { id: 'b_kneeraises', name: 'Hanging Knee Raises', muscle: 'Core', sets: 3, repsMin: 12, repsMax: 12, metric: 'reps', group: 'core', increment: 2 },
+        { id: 'b_yraises', name: 'Y-Raises', muscle: 'Schulter', sets: 3, repsMin: 12, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 1, perHand: true, painCheck: true },
+        { id: 'b_scaption', name: 'Scaption Raises (30° vor)', muscle: 'Schulter', sets: 3, repsMin: 12, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 1, perHand: true, painCheck: true },
+        { id: 'b_szcurls', name: 'SZ-Curls', muscle: 'Arme', sets: 2, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5 },
+        { id: 'b_trizeps', name: 'Trizeps Seildrücken', muscle: 'Arme', sets: 2, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5, note: 'Overhead nur wenn komplett schmerzfrei' },
+        { id: 'b_pallof', name: 'Pallof Press', muscle: 'Core', sets: 3, repsMin: 10, repsMax: 15, metric: 'weight', group: 'core', increment: 2.5 },
+        { id: 'b_kneeraises', name: 'Hanging Knee Raises', muscle: 'Core', sets: 3, repsMin: 8, repsMax: 15, metric: 'reps', group: 'core', increment: 2 },
       ],
     },
     {
       key: 'C',
       name: 'Ganzkörper C',
       exercises: [
-        { id: 'c_kniebeuge', name: 'Kniebeugen / Hackenschmidt', muscle: 'Beine', sets: 3, repsMin: 8, repsMax: 8, metric: 'weight', group: 'main', increment: 2.5 },
-        { id: 'c_hipthrust', name: 'Hip Thrust', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 5 },
-        { id: 'c_latzug_eng', name: 'Latziehen eng', muscle: 'Rücken', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
-        { id: 'c_einarm_rudern', name: 'Einarmiges Rudern Kabel', muscle: 'Rücken', sets: 3, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
-        { id: 'c_facepulls', name: 'Face Pulls', muscle: 'Rücken', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 2.5, painCheck: true },
-        { id: 'c_schraegbank', name: 'Schrägbank Maschine (leicht)', muscle: 'Brust', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5, painCheck: true, note: 'Bewusst leicht halten' },
-        { id: 'c_extrot', name: 'Außenrotation Kabel', muscle: 'Schulter', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true },
-        { id: 'c_seitheben', name: 'Seitheben leicht', muscle: 'Schulter', sets: 3, repsMin: 15, repsMax: 15, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true },
-        { id: 'c_bizeps', name: 'Kabel Bizeps', muscle: 'Arme', sets: 2, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5 },
-        { id: 'c_trizeps', name: 'Trizeps Seil', muscle: 'Arme', sets: 2, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5 },
-        { id: 'c_farmerwalk', name: 'Farmer Walk', muscle: 'Core', sets: 3, distTarget: 40, metric: 'distance', group: 'core', increment: 2 },
+        { id: 'c_kniebeuge', name: 'Kniebeugen / Hackenschmidt', muscle: 'Beine', sets: 3, repsMin: 6, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5 },
+        { id: 'c_hipthrust', name: 'Hip Thrust', muscle: 'Beine', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 5 },
+        { id: 'c_latzug_eng', name: 'Latziehen eng', muscle: 'Rücken', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
+        { id: 'c_einarm_rudern', name: 'Einarmiges Rudern Kabel', muscle: 'Rücken', sets: 3, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5, perHand: true, painCheck: true },
+        { id: 'c_facepulls', name: 'Face Pulls', muscle: 'Rücken', sets: 3, repsMin: 15, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 2.5, painCheck: true },
+        { id: 'c_schraegbank', name: 'Schrägbank Maschine (leicht)', muscle: 'Brust', sets: 3, repsMin: 8, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5, painCheck: true, note: 'Bewusst leicht halten' },
+        { id: 'c_extrot', name: 'Außenrotation Kabel', muscle: 'Schulter', sets: 3, repsMin: 12, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 1, painCheck: true },
+        { id: 'c_seitheben', name: 'Seitheben leicht', muscle: 'Schulter', sets: 3, repsMin: 12, repsMax: 20, metric: 'weight', group: 'shoulder', increment: 1, perHand: true, painCheck: true },
+        { id: 'c_bizeps', name: 'Kabel Bizeps', muscle: 'Arme', sets: 2, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5 },
+        { id: 'c_trizeps', name: 'Trizeps Seil', muscle: 'Arme', sets: 2, repsMin: 10, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5 },
+        { id: 'c_farmerwalk', name: 'Farmer Walk', muscle: 'Core', sets: 3, distTarget: 40, metric: 'distance', group: 'core', increment: 2, perHand: true },
         { id: 'c_plank', name: 'Plank', muscle: 'Core', sets: 3, timeTarget: 45, metric: 'time', group: 'core', increment: 5 },
       ],
     },
@@ -107,7 +110,18 @@ const PLAN = {
     '8–12 Wiederholungen bei den Grundübungen',
     '12–20 Wiederholungen bei Schulter- und Rehaübungen',
     '1–2 Wiederholungen im Tank lassen – nicht bis zum Muskelversagen',
+    'Doppelte Progression: erst Wiederholungen bis ans obere Ende der Spanne, dann Gewicht rauf und wieder unten anfangen',
+    'Nahe am Muskelversagen (0–3 Wdh. Reserve) zählt mehr als die genaue Wiederholungszahl',
     'Leichter Muskelzug ist okay. Stechender Schmerz = Gewicht runter oder Übung tauschen.',
+  ],
+
+  // Schmerz-Monitoring nach dem Standard aus der Sehnen-Reha:
+  // Schmerz bis 3/10 während der Übung ist unbedenklich, solange er sich
+  // innerhalb von 24 Stunden wieder legt. Ab 4/10 wird die Last reduziert.
+  painLevels: [
+    { key: 'none', label: 'Schmerzfrei', short: 'Kein', desc: 'Alles ruhig – weiter aufbauen' },
+    { key: 'mild', label: 'Leicht (1–3)', short: 'Leicht', desc: 'Spürbar, aber erträglich – Gewicht halten, nicht steigern' },
+    { key: 'sharp', label: 'Stechend (4+)', short: 'Stechend', desc: 'Zu viel – nächstes Mal deutlich leichter' },
   ],
 
   // Wissenschaftlich fundierte Pausenzeiten: längere Pausen (2–3 Min) bringen bei
@@ -136,6 +150,7 @@ const REST_OVERRIDES = {
   c_einarm_rudern: 90, c_bizeps: 90, c_trizeps: 90,
   c_farmerwalk: 120,                                          // Griffkraft & Atmung brauchen länger
 };
+
 // Ein Platz im Plan ("Slot") kann mehrere gleichwertige Varianten haben.
 // Die Basis-Übung plus ihre Alternativen als flache Liste.
 function variantsOf(slot) {
@@ -180,4 +195,9 @@ function resolveExercise(slot, variants) {
 
 function resolvedExercises(workout, variants) {
   return workout.exercises.map((slot) => resolveExercise(slot, variants));
+}
+
+// Einheit fürs Eingabefeld – macht sichtbar, ob pro Hand oder gesamt gezählt wird
+function weightUnit(ex) {
+  return ex.perHand ? 'kg/Hand' : 'kg';
 }

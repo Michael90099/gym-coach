@@ -9,6 +9,7 @@ function defaultState() {
     points: 0,
     badges: [],          // Badge-IDs
     variants: {},        // gewählte Übungs-Variante je Slot: { slotId: exerciseId }
+    weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen
     rehabCount: 0,
     lastWorkoutKey: null,
@@ -76,13 +77,28 @@ function importData(file, onDone) {
   reader.readAsText(file);
 }
 
+// Schmerz-Stufe eines Log-Eintrags. Alte Logs kannten nur ja/nein.
+function painLevelOf(loggedEx) {
+  if (loggedEx.painLevel) return loggedEx.painLevel;
+  return loggedEx.pain ? 'sharp' : 'none';
+}
+
 // Historie einer Übung: neueste zuerst, nur Einträge mit mindestens einem erledigten Satz
 function exerciseHistory(state, exerciseId) {
   const out = [];
   for (let i = state.logs.length - 1; i >= 0; i--) {
     const log = state.logs[i];
     const ex = log.exercises.find((e) => e.id === exerciseId);
-    if (ex && ex.sets.some((s) => s.done)) out.push({ date: log.date, pain: !!ex.pain, sets: ex.sets.filter((s) => s.done) });
+    if (ex && ex.sets.some((s) => s.done)) {
+      const painLevel = painLevelOf(ex);
+      out.push({
+        date: log.date,
+        painLevel,
+        pain: painLevel === 'sharp',
+        rir: typeof ex.rir === 'number' ? ex.rir : null,
+        sets: ex.sets.filter((s) => s.done),
+      });
+    }
   }
   return out;
 }

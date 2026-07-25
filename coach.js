@@ -47,6 +47,15 @@ function fmtDuration(totalSec) {
 
 // ---------- Progression ----------
 
+// Reserve im Tank nach dem letzten Satz ("Reps in Reserve").
+// Wer regelmäßig 0–3 Wiederholungen Reserve lässt, wächst genauso gut wie beim
+// Training bis zum Muskelversagen – bei deutlich weniger Ermüdung und Verletzungsrisiko.
+const RIR_OPTIONS = [
+  { rir: 0, short: 'nichts', desc: 'Nichts mehr gegangen – Muskelversagen' },
+  { rir: 1.5, short: '1–2', desc: 'Noch 1–2 Wiederholungen drin – der Zielbereich' },
+  { rir: 3, short: '3+', desc: 'Noch reichlich Luft – da geht mehr Gewicht' },
+];
+
 function roundToIncrement(value) {
   return Math.max(0, Math.round(value * 2) / 2); // auf 0,5 kg runden
 }
@@ -70,18 +79,29 @@ function getRecommendation(ex, history) {
 
   const lastWeight = maxWeight(last.sets);
 
-  // Schmerz beim letzten Mal -> deutlich zurück, keine Steigerung
-  if (last.pain) {
+  // Schmerz-Monitoring: ab 4/10 wird die Last reduziert, 1–3/10 heißt Gewicht halten
+  if (last.painLevel === 'sharp') {
     if (ex.metric === 'weight' && lastWeight != null) {
-      const reduced = roundToIncrement(lastWeight * 0.85, ex.increment);
+      const reduced = roundToIncrement(lastWeight * 0.85);
       return {
         weight: reduced,
         increase: false,
         caution: true,
-        message: `Letztes Mal stechender Schmerz. Heute mit ca. ${fmtW(reduced)} kg (−15 %) sauber und kontrolliert. Wird es wieder stechend: Übung heute auslassen.`,
+        target: ex.repsMax,
+        message: `Letztes Mal stechender Schmerz (4+). Heute ca. ${fmtW(reduced)} kg (−15 %), sauber und kontrolliert. Wird es wieder stechend: Übung heute auslassen.`,
       };
     }
-    return { weight: null, increase: false, caution: true, message: 'Letztes Mal Schmerzen – heute bewusst leicht und kontrolliert. Bei stechendem Schmerz sofort abbrechen.' };
+    return { weight: null, increase: false, caution: true, message: 'Letztes Mal deutlicher Schmerz – heute bewusst leicht und kontrolliert. Bei stechendem Schmerz sofort abbrechen.' };
+  }
+
+  if (last.painLevel === 'mild' && ex.metric === 'weight' && lastWeight != null) {
+    return {
+      weight: lastWeight,
+      increase: false,
+      caution: true,
+      target: ex.repsMax,
+      message: `Letztes Mal leicht gespürt (1–3) – das ist erlaubt, aber kein Grund zu steigern. Heute wieder ${fmtW(lastWeight)} kg mit sauberer Technik.`,
+    };
   }
 
   const topReached = hitTopOfRange(ex, last.sets, last.sets.length >= ex.sets);
@@ -120,30 +140,63 @@ function getRecommendation(ex, history) {
   if (isShoulder && topReached) {
     // Konservativ: auch die vorletzte Einheit muss oben und schmerzfrei gewesen sein
     const prev = history[1];
-    readyToIncrease = !!prev && !prev.pain && hitTopOfRange(ex, prev.sets, prev.sets.length >= ex.sets) && maxWeight(prev.sets) >= lastWeight;
+    readyToIncrease = !!prev && prev.painLevel === 'none' && hitTopOfRange(ex, prev.sets, prev.sets.length >= ex.sets) && maxWeight(prev.sets) >= lastWeight;
   }
 
   if (readyToIncrease) {
-    const next = roundToIncrement(lastWeight + ex.increment, ex.increment);
+    // Autoregulation: war zuletzt noch viel Reserve, darf der Schritt größer sein
+    const bigStep = !isShoulder && last.rir != null && last.rir >= 3;
+    const next = roundToIncrement(lastWeight + (bigStep ? ex.increment * 2 : ex.increment));
     return {
       weight: next,
       increase: true,
+      target: ex.repsMin,
       message: isShoulder
-        ? `Zwei saubere, schmerzfreie Einheiten – heute vorsichtig auf ${fmtW(next)} kg. Kontrolle vor Gewicht!`
-        : `Letztes Mal alle Sätze am oberen Ende – heute ${fmtW(next)} kg! 💪`,
+        ? `Zwei saubere, schmerzfreie Einheiten – heute vorsichtig auf ${fmtW(next)} kg, zurück auf ${ex.repsMin} Wdh. Kontrolle vor Gewicht!`
+        : bigStep
+          ? `Oberes Ende erreicht und noch Luft gehabt – heute gleich ${fmtW(next)} kg, wieder ab ${ex.repsMin} Wdh! 🚀`
+          : `Alle Sätze auf ${ex.repsMax} Wdh geschafft – heute ${fmtW(next)} kg, wieder ab ${ex.repsMin} Wdh! 💪`,
     };
   }
 
   if (topReached && isShoulder) {
-    return { weight: lastWeight, increase: false, message: `Stark! Noch einmal ${fmtW(lastWeight)} kg schmerzfrei bestätigen, dann geht's beim nächsten Mal hoch.` };
+    return { weight: lastWeight, increase: false, target: ex.repsMax, message: `Stark! Noch einmal ${fmtW(lastWeight)} kg schmerzfrei bestätigen, dann geht's beim nächsten Mal hoch.` };
+  }
+
+  // Stillstand: mehrere Einheiten beim selben Gewicht ohne das obere Ende zu erreichen
+  if (stallCount(ex, history) >= 3) {
+    const deload = roundToIncrement(lastWeight * 0.9);
+    return {
+      weight: deload,
+      increase: false,
+      deload: true,
+      target: ex.repsMax,
+      message: `Drei Einheiten auf ${fmtW(lastWeight)} kg festgefahren. Heute bewusst zurück auf ${fmtW(deload)} kg (−10 %) und sauber wieder hocharbeiten – so löst man einen Stillstand.`,
+    };
   }
 
   const worst = Math.min(...last.sets.map((s) => s.reps || 0));
   return {
     weight: lastWeight,
     increase: false,
-    message: `Heute ${fmtW(lastWeight)} kg – bring alle ${ex.sets} Sätze auf ${ex.repsMax} Wiederholungen (zuletzt min. ${worst}).`,
+    target: ex.repsMax,
+    message: `Heute ${fmtW(lastWeight)} kg – bring alle ${ex.sets} Sätze Richtung ${ex.repsMax} Wdh (zuletzt min. ${worst}). Erst dann geht das Gewicht hoch.`,
   };
+}
+
+// Wie viele Einheiten in Folge steckt die Übung beim selben Gewicht fest,
+// ohne das obere Ende der Wiederholungsspanne zu erreichen?
+function stallCount(ex, history) {
+  const ref = history.length ? maxWeight(history[0].sets) : null;
+  if (ref == null) return 0;
+  let n = 0;
+  for (const h of history) {
+    if (h.painLevel === 'sharp') break;
+    if (maxWeight(h.sets) !== ref) break;
+    if (hitTopOfRange(ex, h.sets, h.sets.length >= ex.sets)) break;
+    n++;
+  }
+  return n;
 }
 
 function hitTopOfRange(ex, doneSets, allSetsDone) {
@@ -195,7 +248,7 @@ function scoreWorkout(log, prevLogsForPR) {
 
   if (increases > 0) { pts += increases * POINTS.increase; details.push({ label: `${increases}× gesteigert 🔥`, pts: increases * POINTS.increase }); }
 
-  const anyPain = log.exercises.some((ex) => ex.pain);
+  const anyPain = log.exercises.some((ex) => painLevelOf(ex) !== 'none');
   if (!anyPain && setCount > 0) { pts += POINTS.painFree; details.push({ label: 'Komplett schmerzfrei', pts: POINTS.painFree }); }
 
   return { pts, details };
@@ -243,9 +296,13 @@ function weekCounts(logs) {
   return counts;
 }
 
+function weeklyGoalOf(state) {
+  return state.weeklyGoal || PLAN.weeklyGoal;
+}
+
 function getStreak(state) {
   const counts = weekCounts(state.logs);
-  const goal = PLAN.weeklyGoal;
+  const goal = weeklyGoalOf(state);
   const thisWeek = isoWeek(new Date().toISOString());
   const thisWeekCount = counts[thisWeek] || 0;
 
@@ -303,7 +360,7 @@ function checkBadges(state) {
 
   let painFreeRun = 0;
   for (let i = state.logs.length - 1; i >= 0; i--) {
-    if (state.logs[i].exercises.some((e) => e.pain)) break;
+    if (state.logs[i].exercises.some((e) => painLevelOf(e) !== 'none')) break;
     painFreeRun++;
   }
   if (painFreeRun >= 5) grant('painfree_5');
