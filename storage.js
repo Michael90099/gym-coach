@@ -8,6 +8,7 @@ function defaultState() {
     logs: [],            // abgeschlossene Trainings, chronologisch
     points: 0,
     badges: [],          // Badge-IDs
+    variants: {},        // gewählte Übungs-Variante je Slot: { slotId: exerciseId }
     rehabCount: 0,
     lastWorkoutKey: null,
     createdAt: new Date().toISOString(),

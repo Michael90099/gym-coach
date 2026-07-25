@@ -192,7 +192,7 @@ function renderHome() {
     '<div class="card">' +
       '<h2>Nächstes Training</h2>' +
       '<div class="workout-picker">' + picker + '</div>' +
-      '<div class="workout-estimate">⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(getWorkout(selectedWorkoutKey))) + ' inkl. Aufwärmen</div>' +
+      '<div class="workout-estimate">⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(resolvedExercises(getWorkout(selectedWorkoutKey), state.variants))) + ' inkl. Aufwärmen</div>' +
       '<button class="btn" id="startBtn">▶︎ ' + esc(getWorkout(selectedWorkoutKey).name) + ' starten</button>' +
     '</div>' +
 
@@ -213,29 +213,31 @@ function renderHome() {
 
 // ---------- Workout-Session ----------
 
+// Baut den Session-Eintrag einer Übung inkl. Empfehlung und Vorbefüllung
+function buildSessionExercise(ex) {
+  const hist = exerciseHistory(state, ex.id);
+  const rec = getRecommendation(ex, hist);
+  const lastSets = hist[0] ? hist[0].sets : [];
+  return {
+    id: ex.id,
+    prevBest: hist[0] ? bestOf(ex, hist[0].sets) : null,
+    rec: { weight: rec.weight, increase: !!rec.increase, caution: !!rec.caution, message: rec.message },
+    sets: Array.from({ length: ex.sets }, (_, i) => ({
+      weight: rec.weight != null ? rec.weight : (lastSets[i] ? lastSets[i].weight : null),
+      reps: ex.metric === 'weight' || ex.metric === 'reps' ? (lastSets[i] && !rec.increase ? lastSets[i].reps : ex.repsMin) : null,
+      value: ex.metric === 'time' ? ex.timeTarget : ex.metric === 'distance' ? ex.distTarget : null,
+      done: false,
+    })),
+    pain: false,
+  };
+}
+
 function startWorkout(key) {
-  const w = getWorkout(key);
   session = {
     workoutKey: key,
     startedAt: new Date().toISOString(),
     warmup: {},
-    exercises: w.exercises.map((ex) => {
-      const hist = exerciseHistory(state, ex.id);
-      const rec = getRecommendation(ex, hist);
-      const lastSets = hist[0] ? hist[0].sets : [];
-      return {
-        id: ex.id,
-        prevBest: hist[0] ? bestOf(ex, hist[0].sets) : null,
-        rec: { weight: rec.weight, increase: !!rec.increase, caution: !!rec.caution, message: rec.message },
-        sets: Array.from({ length: ex.sets }, (_, i) => ({
-          weight: rec.weight != null ? rec.weight : (lastSets[i] ? lastSets[i].weight : null),
-          reps: ex.metric === 'weight' || ex.metric === 'reps' ? (lastSets[i] && !rec.increase ? lastSets[i].reps : ex.repsMin) : null,
-          value: ex.metric === 'time' ? ex.timeTarget : ex.metric === 'distance' ? ex.distTarget : null,
-          done: false,
-        })),
-        pain: false,
-      };
-    }),
+    exercises: resolvedExercises(getWorkout(key), state.variants).map(buildSessionExercise),
   };
   saveSession(session);
   switchTab('home');
@@ -268,8 +270,10 @@ function renderWorkout() {
     '<label><input type="checkbox" data-wu="' + it.id + '"' + (session.warmup[it.id] ? ' checked' : '') + '><span class="ok">' + esc(it.name) + '</span></label>'
   ).join('');
 
-  const exHtml = w.exercises.map((ex, exIdx) => {
-    const sEx = session.exercises[exIdx];
+  const exHtml = session.exercises.map((sEx, exIdx) => {
+    const ex = PLAN.exerciseById[sEx.id];
+    const slot = PLAN.slotByExerciseId[sEx.id];
+    const hasVariants = slot && (slot.alternatives || []).length > 0;
     const recClass = sEx.rec.caution ? ' caution' : sEx.rec.increase ? ' increase' : '';
     const target = ex.metric === 'time' ? ex.sets + '×' + ex.timeTarget + ' Sek'
       : ex.metric === 'distance' ? ex.sets + '×' + ex.distTarget + ' m'
@@ -290,7 +294,9 @@ function renderWorkout() {
 
     const complete = sEx.sets.length > 0 && sEx.sets.every((s) => s.done);
     return '<div class="card exercise-card' + (complete ? ' complete' : '') + '" data-excard="' + exIdx + '">' +
-      '<div class="exercise-head"><h3>' + esc(ex.name) + '</h3><span class="target">' + target + ' · ⏱ ' + fmtTime(ex.rest) + '</span></div>' +
+      '<div class="exercise-head"><h3>' + esc(ex.name) + '</h3>' +
+        (hasVariants ? '<button class="swap-btn" data-swap="' + exIdx + '" aria-label="Übung tauschen">⇄</button>' : '') +
+        '<span class="target">' + target + ' · ⏱ ' + fmtTime(ex.rest) + '</span></div>' +
       (ex.note ? '<div class="exercise-note">⚠️ ' + esc(ex.note) + '</div>' : '') +
       '<div class="rec' + recClass + '">🧠 ' + esc(sEx.rec.message) + '</div>' +
       setsHtml + painHtml +
@@ -360,6 +366,11 @@ function renderWorkout() {
     startHoldTimer(exIdx, i, wish);
   }));
 
+  $$('.swap-btn').forEach((btn) => btn.addEventListener('click', () => {
+    const exIdx = +btn.dataset.swap;
+    openVariantPicker(PLAN.slotByExerciseId[session.exercises[exIdx].id].id, exIdx);
+  }));
+
   $$('.pain-toggle').forEach((btn) => btn.addEventListener('click', () => {
     const exIdx = +btn.dataset.pain;
     session.exercises[exIdx].pain = !session.exercises[exIdx].pain;
@@ -381,6 +392,57 @@ function renderWorkout() {
   });
 }
 
+// ---------- Übungs-Varianten tauschen ----------
+
+// exIdx nur setzen, wenn aus einem laufenden Training heraus getauscht wird
+function openVariantPicker(slotId, exIdx) {
+  const slot = findSlot(slotId);
+  if (!slot) return;
+  if (!state.variants) state.variants = {};
+  const currentId = state.variants[slotId] || slot.id;
+
+  const items = variantsOf(slot).map((v) => {
+    const reps = v.metric === 'time' ? v.sets + '×' + v.timeTarget + ' Sek'
+      : v.sets + '×' + (v.repsMin === v.repsMax ? v.repsMax : v.repsMin + '–' + v.repsMax);
+    return '<button class="variant-opt' + (v.id === currentId ? ' sel' : '') + '" data-variant="' + v.id + '">' +
+      '<div class="vo-name">' + esc(v.name) + (v.id === currentId ? ' <span class="vo-cur">aktuell</span>' : '') + '</div>' +
+      (v.variantNote ? '<div class="vo-desc">' + esc(v.variantNote) + '</div>' : '') +
+      '<div class="vo-meta">' + reps + ' · ⏱ ' + fmtTime(v.rest) + ' Pause</div>' +
+    '</button>';
+  }).join('');
+
+  showOverlay(
+    '<h2>⇄ Übung tauschen</h2>' +
+    '<p class="muted small">Deine Wahl wird gespeichert und gilt auch für die nächsten Trainings. Jede Variante hat ihren eigenen Verlauf – die Gewichte werden also nicht vermischt.</p>' +
+    '<div class="variant-list">' + items + '</div>' +
+    '<button class="btn secondary" id="closeVariant">Schließen</button>'
+  );
+
+  $('#closeVariant').addEventListener('click', hideOverlay);
+  $$('.variant-opt').forEach((b) => b.addEventListener('click', () => {
+    const newId = b.dataset.variant;
+    if (newId === currentId) { hideOverlay(); return; }
+
+    if (exIdx != null && session) {
+      const sEx = session.exercises[exIdx];
+      if (sEx.sets.some((s) => s.done) &&
+          !confirm('Für diese Übung sind schon Sätze eingetragen. Beim Wechsel gehen sie verloren. Trotzdem wechseln?')) return;
+    }
+
+    state.variants[slotId] = newId;
+    saveState(state);
+
+    if (exIdx != null && session) {
+      session.exercises[exIdx] = buildSessionExercise(PLAN.exerciseById[newId]);
+      saveSession(session);
+    }
+
+    hideOverlay();
+    render();
+    toast('⇄ ' + PLAN.exerciseById[newId].name);
+  }));
+}
+
 function updateSessionProgress() {
   const bar = $('#spBar'), pct = $('#spPct'), remain = $('#spRemain');
   if (!bar || !session) return;
@@ -397,8 +459,8 @@ function updateSessionProgress() {
 
 // Gemeinsame Logik, nachdem ein Satz erledigt wurde – egal ob per Häkchen oder Halte-Timer
 function handleSetCompleted(exIdx, i) {
-  const ex = getWorkout(session.workoutKey).exercises[exIdx];
   const sEx = session.exercises[exIdx];
+  const ex = PLAN.exerciseById[sEx.id];
   const s = sEx.sets[i];
 
   // Neuer Bestwert? Sofort feiern!
@@ -552,8 +614,8 @@ function closeHoldTimer() {
 }
 
 function startHoldTimer(exIdx, setIdx, wishSeconds) {
-  const ex = getWorkout(session.workoutKey).exercises[exIdx];
   const sEx = session.exercises[exIdx];
+  const ex = PLAN.exerciseById[sEx.id];
   const target = Math.max(5, wishSeconds || sEx.sets[setIdx].value || ex.timeTarget);
 
   closeHoldTimer();
@@ -839,7 +901,7 @@ let progressExId = null;
 
 function renderProgress() {
   const allEx = [];
-  for (const w of PLAN.workouts) for (const ex of w.exercises) allEx.push({ ex, wk: w.key });
+  for (const w of PLAN.workouts) for (const slot of w.exercises) for (const v of variantsOf(slot)) allEx.push({ ex: v, wk: w.key });
   const withData = allEx.filter((e) => exerciseHistory(state, e.ex.id).length > 0);
   if (!progressExId && withData.length) progressExId = withData[0].ex.id;
   if (progressExId && !allEx.some((e) => e.ex.id === progressExId)) progressExId = null;
@@ -957,15 +1019,20 @@ function drawChart() {
 
 function renderPlanView() {
   const workouts = PLAN.workouts.map((w) => {
-    const rows = w.exercises.map((ex) => {
+    const rows = w.exercises.map((slot) => {
+      const ex = resolveExercise(slot, state.variants);
+      const hasVariants = (slot.alternatives || []).length > 0;
       const target = ex.metric === 'time' ? ex.sets + '×' + ex.timeTarget + 's'
         : ex.metric === 'distance' ? ex.sets + '×' + ex.distTarget + 'm'
         : ex.sets + '×' + (ex.repsMin === ex.repsMax ? ex.repsMax : ex.repsMin + '–' + ex.repsMax);
-      return '<div class="plan-ex"><div>' + esc(ex.name) + '<div class="px-muscle">' + esc(ex.muscle) +
-        ' · ⏱ ' + fmtTime(ex.rest) + ' Pause' + (ex.note ? ' · ' + esc(ex.note) : '') + '</div></div><div class="px-sets">' + target + '</div></div>';
+      return '<div class="plan-ex"><div>' + esc(ex.name) +
+        (hasVariants ? ' <button class="swap-btn small" data-swapslot="' + slot.id + '" aria-label="Übung tauschen">⇄</button>' : '') +
+        '<div class="px-muscle">' + esc(ex.muscle) +
+        ' · ⏱ ' + fmtTime(ex.rest) + ' Pause' + (ex.note ? ' · ' + esc(ex.note) : '') + '</div></div>' +
+        '<div class="px-sets">' + target + '</div></div>';
     }).join('');
     return '<details class="fold"><summary><span>' + esc(w.name) +
-      '<span class="fold-duration"> · ⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(w)) + '</span></span></summary>' +
+      '<span class="fold-duration"> · ⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(resolvedExercises(w, state.variants))) + '</span></span></summary>' +
       '<div class="fold-body">' + rows + '</div></details>';
   }).join('');
 
@@ -986,6 +1053,11 @@ function renderPlanView() {
     '<details class="fold"><summary>⏱ Pausenzeiten</summary><div class="fold-body">' + restRules + '</div></details>' +
     '<div class="card"><p class="muted small">Mit konsequentem Training verbessern sich Impingement-Beschwerden meist in 8–12 Wochen. ' +
     'Der Schlüssel: schrittweiser Kraftaufbau von Rotatorenmanschette und Schulterblattmuskulatur – nicht das Vermeiden jeder Belastung.</p></div>';
+
+  $$('[data-swapslot]').forEach((btn) => btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    openVariantPicker(btn.dataset.swapslot, null);
+  }));
 }
 
 // ---------- Service Worker (mit robustem Auto-Update fürs iPhone) ----------

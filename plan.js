@@ -49,7 +49,16 @@ const PLAN = {
       key: 'B',
       name: 'Ganzkörper B',
       exercises: [
-        { id: 'b_splitsquat', name: 'Bulgarian Split Squat', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2 },
+        { id: 'b_splitsquat', name: 'Bulgarian Split Squat', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2,
+          variantNote: 'Original – am anspruchsvollsten, viel Gleichgewicht nötig',
+          alternatives: [
+            { id: 'b_walking_lunges', name: 'Ausfallschritte im Gehen', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 12, metric: 'weight', group: 'main', increment: 2,
+              note: 'Gewicht pro Hand · 10–12 Schritte pro Bein · Oberkörper aufrecht',
+              variantNote: 'Kommt dem Split Squat am nächsten, aber leichter zu stabilisieren' },
+            { id: 'b_reverse_lunges', name: 'Rückwärts-Ausfallschritte', muscle: 'Beine', sets: 3, repsMin: 10, repsMax: 12, metric: 'weight', group: 'main', increment: 2,
+              note: 'Gewicht pro Hand · am Stand, 10–12 pro Bein',
+              variantNote: 'Knieschonend und braucht kaum Platz' },
+          ] },
         { id: 'b_beinbeuger', name: 'Beinbeuger Maschine', muscle: 'Beine', sets: 3, repsMin: 12, repsMax: 12, metric: 'weight', group: 'main', increment: 2.5 },
         { id: 'b_beinstrecker', name: 'Beinstrecker', muscle: 'Beine', sets: 2, repsMin: 15, repsMax: 15, metric: 'weight', group: 'main', increment: 2.5 },
         { id: 'b_kabelrudern', name: 'Kabelrudern', muscle: 'Rücken', sets: 3, repsMin: 10, repsMax: 10, metric: 'weight', group: 'main', increment: 2.5, painCheck: true },
@@ -124,15 +133,48 @@ const REST_OVERRIDES = {
   c_einarm_rudern: 90, c_bizeps: 90, c_trizeps: 90,
   c_farmerwalk: 90,                                           // hohe Ganzkörper-Last
 };
+// Ein Platz im Plan ("Slot") kann mehrere gleichwertige Varianten haben.
+// Die Basis-Übung plus ihre Alternativen als flache Liste.
+function variantsOf(slot) {
+  return [slot].concat(slot.alternatives || []);
+}
+
 for (const w of PLAN.workouts) {
-  for (const ex of w.exercises) ex.rest = REST_OVERRIDES[ex.id] || REST_DEFAULTS[ex.group];
+  for (const slot of w.exercises) {
+    for (const v of variantsOf(slot)) v.rest = REST_OVERRIDES[v.id] || REST_DEFAULTS[v.group];
+  }
 }
 
 PLAN.exerciseById = {};
+PLAN.slotByExerciseId = {};
 for (const w of PLAN.workouts) {
-  for (const ex of w.exercises) PLAN.exerciseById[ex.id] = ex;
+  for (const slot of w.exercises) {
+    for (const v of variantsOf(slot)) {
+      PLAN.exerciseById[v.id] = v;
+      PLAN.slotByExerciseId[v.id] = slot;
+    }
+  }
 }
 
 function getWorkout(key) {
   return PLAN.workouts.find((w) => w.key === key);
+}
+
+function findSlot(slotId) {
+  for (const w of PLAN.workouts) {
+    const slot = w.exercises.find((s) => s.id === slotId);
+    if (slot) return slot;
+  }
+  return null;
+}
+
+// Welche Variante eines Slots ist gerade gewählt? (Standard: die Basis-Übung)
+function resolveExercise(slot, variants) {
+  const chosen = variants && variants[slot.id];
+  if (!chosen || chosen === slot.id) return slot;
+  return (slot.alternatives || []).find((a) => a.id === chosen) || slot;
+}
+
+function resolvedExercises(workout, variants) {
+  return workout.exercises.map((slot) => resolveExercise(slot, variants));
 }

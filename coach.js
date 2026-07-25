@@ -11,10 +11,10 @@ function estimateSetWorkSeconds(ex) {
   return Math.round(reps * 3 + 8); // ~3 Sek./Wdh. kontrolliert + Rüstzeit
 }
 
-// Gesamtzeit für ein komplettes Training (inkl. Aufwärmen, Satz- und Übungswechsel-Pausen)
-function estimateWorkoutSeconds(workout) {
+// Gesamtzeit für ein komplettes Training (inkl. Aufwärmen, Satz- und Übungswechsel-Pausen).
+// Erwartet die bereits aufgelöste Übungsliste (gewählte Varianten).
+function estimateWorkoutSeconds(exs) {
   let total = WARMUP_SEC;
-  const exs = workout.exercises;
   exs.forEach((ex, i) => {
     const setSec = estimateSetWorkSeconds(ex);
     total += setSec * ex.sets;
