@@ -9,6 +9,7 @@ function defaultState() {
     points: 0,
     badges: [],          // Badge-IDs
     variants: {},        // gewählte Übungs-Variante je Slot: { slotId: exerciseId }
+    lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen
     rehabCount: 0,
     lastWorkoutKey: null,
     createdAt: new Date().toISOString(),
@@ -46,6 +47,8 @@ function saveSession(session) {
 }
 
 function exportData(state) {
+  state.lastExportAt = new Date().toISOString();
+  saveState(state);
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

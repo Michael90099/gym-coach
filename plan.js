@@ -113,7 +113,8 @@ const PLAN = {
   // Wissenschaftlich fundierte Pausenzeiten: längere Pausen (2–3 Min) bringen bei
   // Grundübungen nachweislich mehr Kraft- und Muskelaufbau als 60–90 Sekunden.
   restRules: [
-    'Schwere Beinübungen (Beinpresse, Kreuzheben, Kniebeugen): 2:30 Min',
+    'Schwere Bein-/Hüftübungen (Beinpresse, Kreuzheben, Kniebeugen, Hip Thrust): 2:30 Min',
+    'Einbeinige Übungen (Split Squat, Ausfallschritte): 2:30 Min – zählt pro Bein',
     'Grundübungen Oberkörper (Rudern, Latzug, Brustpresse): 2:00 Min',
     'Isolationsübungen (Arme, Waden, Beinmaschinen): 1:30 Min',
     'Schulter- & Rehaübungen: 1:00 Min – hier zählt Qualität, nicht Erschöpfung',
@@ -127,11 +128,13 @@ const PLAN = {
 const REST_DEFAULTS = { main: 120, shoulder: 60, core: 60 };
 const REST_OVERRIDES = {
   a_beinpresse: 150, a_rdl: 150, c_kniebeuge: 150,            // schwere Beinübungen
+  c_hipthrust: 150,                                           // schwere Hüftstreckung
+  b_splitsquat: 150, b_walking_lunges: 150, b_reverse_lunges: 150, // einbeinig = doppelte Arbeit pro Satz
   a_waden: 90, a_hammercurls: 90, a_trizeps: 90,              // Isolation
   b_beinbeuger: 90, b_beinstrecker: 90, b_liegestuetze: 90,
   b_szcurls: 90, b_trizeps: 90,
   c_einarm_rudern: 90, c_bizeps: 90, c_trizeps: 90,
-  c_farmerwalk: 90,                                           // hohe Ganzkörper-Last
+  c_farmerwalk: 120,                                          // Griffkraft & Atmung brauchen länger
 };
 // Ein Platz im Plan ("Slot") kann mehrere gleichwertige Varianten haben.
 // Die Basis-Übung plus ihre Alternativen als flache Liste.

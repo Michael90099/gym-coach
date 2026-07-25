@@ -89,7 +89,8 @@ function getRecommendation(ex, history) {
   if (ex.metric === 'time') {
     const best = Math.max(...last.sets.map((s) => s.value || 0));
     const target = topReached ? best + ex.increment : Math.max(best, ex.timeTarget);
-    return { weight: null, increase: topReached, message: topReached ? `Stark! Heute Ziel: ${target} Sekunden pro Satz.` : `Ziel heute: ${target} Sekunden halten – letzte Bestzeit ${best}s.` };
+    // target wandert in die Vorbefüllung, damit Timer und Ansage übereinstimmen
+    return { weight: null, increase: topReached, target, message: topReached ? `Stark! Heute Ziel: ${target} Sekunden pro Satz.` : `Ziel heute: ${target} Sekunden halten – letzte Bestzeit ${best}s.` };
   }
 
   if (ex.metric === 'distance') {
@@ -104,9 +105,10 @@ function getRecommendation(ex, history) {
   if (ex.metric === 'reps') {
     const best = Math.max(...last.sets.map((s) => s.reps || 0));
     if (topReached) {
-      return { weight: null, increase: true, message: `Obergrenze erreicht – heute ${best + ex.increment} Wiederholungen pro Satz anpeilen!` };
+      const target = best + ex.increment;
+      return { weight: null, increase: true, target, message: `Obergrenze erreicht – heute ${target} Wiederholungen pro Satz anpeilen!` };
     }
-    return { weight: null, increase: false, message: `Ziel heute: alle Sätze auf ${ex.repsMax} Wiederholungen bringen (zuletzt max. ${best}).` };
+    return { weight: null, increase: false, target: ex.repsMax, message: `Ziel heute: alle Sätze auf ${ex.repsMax} Wiederholungen bringen (zuletzt max. ${best}).` };
   }
 
   // metric === 'weight'

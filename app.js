@@ -148,6 +148,20 @@ function weekStripHtml() {
   }).join('');
 }
 
+// Erinnerung ans Backup – iOS kann den Speicher einer Web-App löschen,
+// dann wären Verlauf, Punkte und Streak weg.
+function backupHintHtml() {
+  if (state.logs.length < 3) return '';
+  const days = state.lastExportAt ? (Date.now() - new Date(state.lastExportAt).getTime()) / 86400000 : null;
+  if (days != null && days < 21) return '';
+  return '<div class="card backup-hint">' +
+    '<h2>💾 Zeit für ein Backup</h2>' +
+    '<p class="muted small">' + (days == null
+      ? 'Du hast noch nie gesichert. Deine ' + state.logs.length + ' Trainings liegen nur auf diesem iPhone – iOS kann den Speicher irgendwann leeren.'
+      : 'Letztes Backup vor ' + Math.round(days) + ' Tagen.') +
+    '</p><button class="btn secondary" id="homeExportBtn">⬇︎ Jetzt sichern</button></div>';
+}
+
 function renderHome() {
   const { streak, thisWeekCount, goal } = getStreak(state);
   const lvl = getLevel(state.points);
@@ -196,6 +210,7 @@ function renderHome() {
       '<button class="btn" id="startBtn">▶︎ ' + esc(getWorkout(selectedWorkoutKey).name) + ' starten</button>' +
     '</div>' +
 
+    backupHintHtml() +
     (badges ? '<div class="card"><h2>Letzte Abzeichen</h2><div>' + badges + '</div></div>' : '');
 
   $$('[data-count]').forEach((el) => animateCount(el, +el.dataset.count));
@@ -209,6 +224,8 @@ function renderHome() {
     renderHome();
   }));
   $('#startBtn').addEventListener('click', () => startWorkout(selectedWorkoutKey));
+  const expBtn = $('#homeExportBtn');
+  if (expBtn) expBtn.addEventListener('click', () => { exportData(state); renderHome(); toast('💾 Backup gespeichert'); });
 }
 
 // ---------- Workout-Session ----------
@@ -224,8 +241,13 @@ function buildSessionExercise(ex) {
     rec: { weight: rec.weight, increase: !!rec.increase, caution: !!rec.caution, message: rec.message },
     sets: Array.from({ length: ex.sets }, (_, i) => ({
       weight: rec.weight != null ? rec.weight : (lastSets[i] ? lastSets[i].weight : null),
-      reps: ex.metric === 'weight' || ex.metric === 'reps' ? (lastSets[i] && !rec.increase ? lastSets[i].reps : ex.repsMin) : null,
-      value: ex.metric === 'time' ? ex.timeTarget : ex.metric === 'distance' ? ex.distTarget : null,
+      // Bei reps/time gibt der Coach die Zielvorgabe vor – sonst würde die Ansage
+      // ("heute 45 Sekunden") nicht zum vorbefüllten Feld passen.
+      reps: ex.metric === 'reps' ? (rec.target != null ? rec.target : ex.repsMax)
+        : ex.metric === 'weight' ? (lastSets[i] && !rec.increase ? lastSets[i].reps : ex.repsMin)
+        : null,
+      value: ex.metric === 'time' ? (rec.target != null ? rec.target : ex.timeTarget)
+        : ex.metric === 'distance' ? ex.distTarget : null,
       done: false,
     })),
     pain: false,
