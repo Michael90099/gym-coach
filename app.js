@@ -111,6 +111,7 @@ function render() {
   if (currentTab === 'home') return renderHome();
   if (currentTab === 'history') return renderHistory();
   if (currentTab === 'progress') return renderProgress();
+  if (currentTab === 'body') return renderBody();
   if (currentTab === 'plan') return renderPlanView();
 }
 
@@ -210,6 +211,11 @@ function renderHome() {
       '<button class="btn" id="startBtn">▶︎ ' + esc(getWorkout(selectedWorkoutKey).name) + ' starten</button>' +
     '</div>' +
 
+    (checkinDue(state)
+      ? '<div class="card checkin-hint"><h2>⚖️ Wochen-Check-in fällig</h2>' +
+        '<p class="muted small">Einmal pro Woche wiegen hält dein Rekomp-Coaching scharf. Dauert 20 Sekunden, bringt ' + POINTS_CHECKIN + ' Punkte.</p>' +
+        '<button class="btn secondary" id="homeCheckinBtn">Jetzt eintragen</button></div>'
+      : '') +
     backupHintHtml() +
     (badges ? '<div class="card"><h2>Letzte Abzeichen</h2><div>' + badges + '</div></div>' : '');
 
@@ -226,6 +232,8 @@ function renderHome() {
   $('#startBtn').addEventListener('click', () => startWorkout(selectedWorkoutKey));
   const expBtn = $('#homeExportBtn');
   if (expBtn) expBtn.addEventListener('click', () => { exportData(state); renderHome(); toast('💾 Backup gespeichert'); });
+  const ciBtn = $('#homeCheckinBtn');
+  if (ciBtn) ciBtn.addEventListener('click', () => openCheckinSheet());
 }
 
 // ---------- Workout-Session ----------
@@ -1114,6 +1122,200 @@ function drawChart() {
     '</svg></div>' +
     '<div class="muted small" style="margin-top:2px">Bestwert pro Einheit (' + unit + '). Roter Punkt = Einheit mit Schmerz.</div>' +
     '<table class="data-table"><tr><th>Datum</th><th>Sätze</th><th></th></tr>' + tableRows + '</table>';
+}
+
+// ---------- Körper: Rekomposition, Tagesziele, Zeitleiste ----------
+
+// Kompakte Einzelserien-Linie (gleicher Stil wie das Übungs-Diagramm)
+function miniLineChart(points, unit) {
+  if (!points.length) return '';
+  const W = 520, H = 200, padL = 46, padR = 18, padT = 16, padB = 28;
+  const vals = points.map((p) => p.v);
+  const vMax = Math.max(...vals), vMin = Math.min(...vals);
+  const span = Math.max(vMax - vMin, 0.5);
+  const yMax = vMax + span * 0.15, yMin = vMin - span * 0.15;
+  const x = (i) => points.length === 1 ? (padL + (W - padL - padR) / 2) : padL + (i / (points.length - 1)) * (W - padL - padR);
+  const y = (v) => padT + (1 - (v - yMin) / (yMax - yMin)) * (H - padT - padB);
+
+  let grid = '';
+  for (let g = 0; g < 3; g++) {
+    const gv = yMin + ((g + 0.5) / 3) * (yMax - yMin);
+    grid += '<line x1="' + padL + '" y1="' + y(gv) + '" x2="' + (W - padR) + '" y2="' + y(gv) + '" stroke="#2a3242" stroke-width="1"/>' +
+      '<text x="' + (padL - 6) + '" y="' + (y(gv) + 4) + '" text-anchor="end" font-size="11" fill="#6b7687">' + (Math.round(gv * 10) / 10) + '</text>';
+  }
+  const path = points.map((p, i) => (i === 0 ? 'M' : 'L') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1)).join(' ');
+  const dots = points.map((p, i) => {
+    const label = (i === points.length - 1 || i === 0)
+      ? '<text x="' + x(i) + '" y="' + (y(p.v) - 11) + '" text-anchor="middle" font-size="12" font-weight="700" fill="#eef1f6">' + fmtW(p.v) + '</text>' : '';
+    return '<circle cx="' + x(i) + '" cy="' + y(p.v) + '" r="4.5" fill="#26ab84" stroke="#151a24" stroke-width="2">' +
+      '<title>' + fmtDate(p.date) + ': ' + fmtW(p.v) + ' ' + unit + '</title></circle>' + label;
+  }).join('');
+  const xl = points.length > 1
+    ? '<text x="' + padL + '" y="' + (H - 6) + '" font-size="11" fill="#6b7687">' + fmtDate(points[0].date) + '</text>' +
+      '<text x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end" font-size="11" fill="#6b7687">' + fmtDate(points[points.length - 1].date) + '</text>'
+    : '';
+  return '<div class="chart-wrap"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Verlauf in ' + unit + '">' +
+    grid + '<path d="' + path + '" fill="none" stroke="#26ab84" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' + dots + xl + '</svg></div>';
+}
+
+function renderBody() {
+  const body = state.body;
+  const entries = body.entries || [];
+  const last = latestBodyEntry(state);
+
+  // Einstieg, solange noch nichts erfasst ist
+  if (!entries.length) {
+    view.innerHTML =
+      '<div class="card hero">' +
+        '<div class="date-line">Körper & Rekomposition</div>' +
+        '<div class="greeting">Muskeln rauf, Fett runter 🎯</div>' +
+        '<div class="quote">Die Waage allein lügt dabei: Wer Muskeln aufbaut und Fett verliert, wiegt oft gleich viel. Deshalb schauen wir auf drei Dinge zusammen – Gewicht, Taille und deine Kraft im Training.</div>' +
+      '</div>' +
+      '<div class="card"><h2>So funktioniert es</h2>' +
+        '<div class="plan-ex"><div>⚖️ Einmal pro Woche wiegen (morgens, nüchtern) und optional die Taille messen</div></div>' +
+        '<div class="plan-ex"><div>💪 Deine Trainingsgewichte liefern den Kraft-Index – der ehrlichste Muskel-Anzeiger</div></div>' +
+        '<div class="plan-ex"><div>🧠 Der Coach liest alle drei Signale zusammen und sagt dir, ob du auf Kurs bist</div></div>' +
+        '<div class="plan-ex"><div>🥩 Dazu bekommst du dein tägliches Protein- und Kalorienziel</div></div>' +
+      '</div>' +
+      '<button class="btn" id="firstCheckin">⚖️ Ersten Check-in eintragen</button>';
+    $('#firstCheckin').addEventListener('click', () => openCheckinSheet());
+    return;
+  }
+
+  // Tagesziele
+  const protein = proteinTarget(last.weightKg);
+  const kcal = calorieTarget(body, last.weightKg);
+  const goals =
+    '<div class="card"><h2>🥩 Deine Tagesziele</h2>' +
+      '<div class="stat-row" style="margin-bottom:0">' +
+        '<div class="stat-tile"><div class="val gold">' + protein + ' g</div><div class="lbl">Eiweiß / Tag</div></div>' +
+        (kcal ? '<div class="stat-tile"><div class="val">' + kcal + '</div><div class="lbl">kcal / Tag</div></div>' : '<div class="stat-tile"><div class="val">?</div><div class="lbl">kcal – Daten fehlen</div></div>') +
+        '<div class="stat-tile"><div class="val">' + fmtW(last.weightKg) + '</div><div class="lbl">kg aktuell</div></div>' +
+      '</div>' +
+      '<p class="muted small" style="margin-top:10px">2 g Eiweiß pro kg Körpergewicht schützt deine Muskeln im Defizit. Praktisch: 250 g Magerquark ≈ 30 g · Hähnchenbrust (200 g) ≈ 45 g · 1 Shake ≈ 25 g · 3 Eier ≈ 19 g.' +
+      (kcal ? ' Das Kalorienziel enthält bereits ein moderates Defizit von 400 kcal – mehr würde Muskeln kosten.' : ' Für ein Kalorienziel trage unter „Profil" Größe, Alter und Geschlecht ein.') + '</p>' +
+    '</div>';
+
+  // Rekomp-Status
+  const ana = bodyAnalysis(state);
+  const status = ana
+    ? '<div class="card status-card"><h2>' + ana.icon + ' ' + esc(ana.title) + '</h2>' +
+      '<div class="status-facts">' + ana.facts.map((f) => '<span class="chip">' + esc(f) + '</span>').join(' ') + '</div>' +
+      '<p class="muted small" style="margin-top:8px">' + esc(ana.advice) + '</p></div>'
+    : '<div class="card"><h2>📊 Rekomp-Status</h2><p class="muted small">Nach dem zweiten Check-in (nächste Woche) beginnt hier die Auswertung von Gewicht, Taille und Kraft zusammen.</p></div>';
+
+  // Diagramme
+  const wPoints = entries.map((e) => ({ date: e.date, v: e.weightKg }));
+  const waistPoints = entries.filter((e) => e.waistCm != null).map((e) => ({ date: e.date, v: e.waistCm }));
+  const sSeries = strengthIndexSeries(state);
+  const sNow = sSeries.length ? sSeries[sSeries.length - 1].v : null;
+
+  const charts =
+    '<div class="card"><h2>⚖️ Gewicht (kg)</h2>' + miniLineChart(wPoints, 'kg') + '</div>' +
+    (waistPoints.length >= 2 ? '<div class="card"><h2>📏 Taille (cm)</h2>' + miniLineChart(waistPoints, 'cm') + '</div>' : '') +
+    (sSeries.length >= 2
+      ? '<div class="card"><h2>💪 Kraft-Index' + (sNow != null ? ' · ' + fmtW(sNow) + '' : '') + '</h2>' +
+        miniLineChart(sSeries, 'Punkte') +
+        '<p class="muted small" style="margin-top:6px">100 = dein Startniveau über alle Übungen. Steigt diese Kurve, wächst nachweislich Kraft – und mit ihr Muskulatur. Das sieht keine Waage.</p></div>'
+      : '');
+
+  // Zeitleiste
+  const tl = buildTimeline(state);
+  const timeline = tl.length
+    ? '<div class="section-label">Deine Veränderungs-Zeitleiste</div>' +
+      '<div class="card timeline">' + tl.map((e) =>
+        '<div class="tl-item"><span class="tl-icon">' + e.icon + '</span>' +
+        '<div class="tl-body"><div class="tl-text">' + esc(e.text) + '</div>' +
+        '<div class="tl-date">' + fmtDate(e.date) + '</div></div></div>'
+      ).join('') + '</div>'
+    : '';
+
+  view.innerHTML =
+    status + goals + charts + timeline +
+    '<button class="btn" id="checkinBtn">⚖️ Check-in eintragen (+' + POINTS_CHECKIN + ' P)</button>' +
+    '<button class="btn secondary" id="profileBtn" style="margin-top:10px">⚙ Profil (Größe, Alter, Aktivität)</button>';
+
+  $('#checkinBtn').addEventListener('click', () => openCheckinSheet());
+  $('#profileBtn').addEventListener('click', openProfileSheet);
+}
+
+function openCheckinSheet() {
+  const last = latestBodyEntry(state);
+  showOverlay(
+    '<h2>⚖️ Wochen-Check-in</h2>' +
+    '<p class="muted small">Am besten immer gleich: morgens, nüchtern, nach dem Aufstehen. Taille auf Bauchnabelhöhe, entspannt ausgeatmet.</p>' +
+    '<div class="set-row" style="margin-top:12px"><span class="set-num" style="width:70px">Gewicht</span>' +
+      '<input type="number" inputmode="decimal" step="0.1" id="ciWeight" value="' + (last ? last.weightKg : '') + '" placeholder="kg"><span class="unit">kg</span></div>' +
+    '<div class="set-row"><span class="set-num" style="width:70px">Taille</span>' +
+      '<input type="number" inputmode="decimal" step="0.5" id="ciWaist" value="' + (last && last.waistCm != null ? last.waistCm : '') + '" placeholder="optional"><span class="unit">cm</span></div>' +
+    '<div class="btn-row">' +
+      '<button class="btn secondary" id="ciCancel">Abbrechen</button>' +
+      '<button class="btn" id="ciSave">Speichern ✓</button>' +
+    '</div>'
+  );
+  $('#ciCancel').addEventListener('click', hideOverlay);
+  $('#ciSave').addEventListener('click', () => {
+    const w = parseFloat(($('#ciWeight').value || '').replace(',', '.'));
+    if (isNaN(w) || w < 30 || w > 300) { alert('Bitte ein gültiges Gewicht eintragen.'); return; }
+    const waistRaw = ($('#ciWaist').value || '').replace(',', '.');
+    const waist = waistRaw === '' ? null : parseFloat(waistRaw);
+
+    const prev = latestBodyEntry(state);
+    const givePoints = !prev || (Date.now() - new Date(prev.date).getTime()) / 86400000 >= 3;
+    state.body.entries.push({ date: new Date().toISOString(), weightKg: Math.round(w * 10) / 10, waistCm: waist != null && !isNaN(waist) ? Math.round(waist * 10) / 10 : null });
+    if (givePoints) state.points += POINTS_CHECKIN;
+    saveState(state);
+    hideOverlay();
+    if (currentTab !== 'body') switchTab('body'); else render();
+    toast(givePoints ? '⚖️ Gespeichert · +' + POINTS_CHECKIN + ' Punkte!' : '⚖️ Gespeichert');
+    if (givePoints) confetti(40);
+  });
+}
+
+function openProfileSheet() {
+  const b = state.body;
+  const sexBtn = (key, label) =>
+    '<button class="chip-btn' + (b.sex === key ? ' on' : '') + '" data-sex="' + key + '">' + label + '</button>';
+  const actBtn = (a) =>
+    '<button class="chip-btn' + ((b.activity || 1.6) === a.key ? ' on' : '') + '" data-act="' + a.key + '" title="' + esc(a.desc) + '">' + esc(a.label) + '</button>';
+
+  showOverlay(
+    '<h2>⚙ Profil</h2>' +
+    '<p class="muted small">Nur für die Kalorienschätzung – bleibt wie alles andere ausschließlich auf deinem Gerät.</p>' +
+    '<div class="set-row" style="margin-top:12px"><span class="set-num" style="width:70px">Größe</span>' +
+      '<input type="number" inputmode="numeric" id="pfHeight" value="' + (b.heightCm || '') + '" placeholder="z.B. 180"><span class="unit">cm</span></div>' +
+    '<div class="set-row"><span class="set-num" style="width:70px">Alter</span>' +
+      '<input type="number" inputmode="numeric" id="pfAge" value="' + (b.age || '') + '" placeholder="Jahre"><span class="unit"></span></div>' +
+    '<div class="check-row" style="border:none;padding-top:4px"><span class="cr-label">Geschlecht</span><div class="cr-chips">' + sexBtn('m', 'Mann') + sexBtn('w', 'Frau') + '</div></div>' +
+    '<div class="check-row" style="border:none"><span class="cr-label">Aktivität</span><div class="cr-chips">' + ACTIVITY_LEVELS.map(actBtn).join('') + '</div></div>' +
+    '<div class="btn-row">' +
+      '<button class="btn secondary" id="pfCancel">Abbrechen</button>' +
+      '<button class="btn" id="pfSave">Speichern ✓</button>' +
+    '</div>'
+  );
+
+  let sex = b.sex, activity = b.activity || 1.6;
+  $$('[data-sex]').forEach((btn) => btn.addEventListener('click', () => {
+    sex = btn.dataset.sex;
+    $$('[data-sex]').forEach((x) => x.classList.toggle('on', x === btn));
+  }));
+  $$('[data-act]').forEach((btn) => btn.addEventListener('click', () => {
+    activity = parseFloat(btn.dataset.act);
+    $$('[data-act]').forEach((x) => x.classList.toggle('on', x === btn));
+  }));
+  $('#pfCancel').addEventListener('click', hideOverlay);
+  $('#pfSave').addEventListener('click', () => {
+    const h = parseInt($('#pfHeight').value, 10);
+    const a = parseInt($('#pfAge').value, 10);
+    state.body.heightCm = !isNaN(h) && h > 100 && h < 250 ? h : null;
+    state.body.age = !isNaN(a) && a > 10 && a < 100 ? a : null;
+    state.body.sex = sex;
+    state.body.activity = activity;
+    saveState(state);
+    hideOverlay();
+    render();
+    toast('⚙ Profil gespeichert');
+  });
 }
 
 // ---------- Plan-Ansicht ----------

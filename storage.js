@@ -10,6 +10,8 @@ function defaultState() {
     badges: [],          // Badge-IDs
     variants: {},        // gewählte Übungs-Variante je Slot: { slotId: exerciseId }
     steps: {},           // Gewichtsschritt je Übung im eigenen Studio: { exerciseId: kg }
+    body: { heightCm: null, age: null, sex: null, activity: 1.6, entries: [] }, // Körperdaten & Check-ins
+    badgeDates: {},      // wann welches Abzeichen freigeschaltet wurde (für die Zeitleiste)
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen
     rehabCount: 0,
@@ -22,7 +24,10 @@ function loadState() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return defaultState();
-    return Object.assign(defaultState(), JSON.parse(raw));
+    const state = Object.assign(defaultState(), JSON.parse(raw));
+    // Ältere Speicherstände kennen die Körperdaten noch nicht
+    state.body = Object.assign(defaultState().body, state.body || {});
+    return state;
   } catch (e) {
     console.error('Konnte Daten nicht laden', e);
     return defaultState();

@@ -356,7 +356,14 @@ const BADGES = [
 function checkBadges(state) {
   const earned = [];
   const has = (id) => state.badges.includes(id);
-  const grant = (id) => { if (!has(id)) { state.badges.push(id); earned.push(BADGES.find((b) => b.id === id)); } };
+  const grant = (id) => {
+    if (!has(id)) {
+      state.badges.push(id);
+      if (!state.badgeDates) state.badgeDates = {};
+      state.badgeDates[id] = new Date().toISOString();
+      earned.push(BADGES.find((b) => b.id === id));
+    }
+  };
 
   const n = state.logs.length;
   if (n >= 1) grant('first_workout');
