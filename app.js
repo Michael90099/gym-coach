@@ -74,6 +74,7 @@ function confetti(count) {
 }
 
 function animateCount(el, to, suffix) {
+  if (!el) return; // Ziel kann schon geschlossen sein (z. B. Zusammenfassung sofort weggetippt)
   const dur = 900, t0 = performance.now();
   (function frame(t) {
     const k = Math.min(1, (t - t0) / dur);
@@ -274,6 +275,7 @@ function startWorkout(key) {
   };
   saveSession(session);
   switchTab('home');
+  toast(pickQuote(QUOTES.workoutStart));
 }
 
 function setInputsHtml(ex, sEx, i) {
@@ -295,6 +297,39 @@ function setInputsHtml(ex, sEx, i) {
     inputs += '<input type="number" inputmode="numeric" data-f="value" data-i="' + i + '" value="' + (s.value != null ? s.value : '') + '" placeholder="m"><span class="unit">m</span>';
   }
   return inputs;
+}
+
+// Aufwärmsatz-Zeile für schwere Grundübungen (nicht abzuhaken – nur als Ansage)
+function rampHtml(ex, sEx) {
+  const exEff = effectiveExercise(ex, state.steps);
+  if (!exEff.ramp) return '';
+  const workWeight = sEx.sets[0] ? sEx.sets[0].weight : null;
+  const ramps = rampSets(exEff, workWeight);
+  if (!ramps.length) {
+    return workWeight == null
+      ? '<div class="ramp-row">🔥 Vorher aufwärmen: ~50 % × 10 und ~75 % × 5 deines Arbeitsgewichts</div>'
+      : '';
+  }
+  const parts = ramps.map((r) => fmtW(r.weight) + ' kg × ' + r.reps).join(' → ');
+  return '<div class="ramp-row">🔥 Aufwärmsätze: ' + parts + ' <span class="ramp-hint">· kurz pausieren, zählt nicht als Arbeitssatz</span></div>';
+}
+
+// Aufwärmsatz-Zeile einer Karte an das aktuelle Gewicht anpassen (ohne Voll-Render,
+// damit der Nutzer beim Tippen nicht den Fokus verliert)
+function updateRampRow(exIdx) {
+  const sEx = session.exercises[exIdx];
+  const ex = PLAN.exerciseById[sEx.id];
+  const card = $('[data-excard="' + exIdx + '"]');
+  if (!card) return;
+  const html = rampHtml(ex, sEx);
+  const existing = card.querySelector('.ramp-row');
+  if (existing) {
+    if (html) existing.outerHTML = html;
+    else existing.remove();
+  } else if (html) {
+    const rec = card.querySelector('.rec');
+    if (rec) rec.insertAdjacentHTML('afterend', html);
+  }
 }
 
 function renderWorkout() {
@@ -345,6 +380,7 @@ function renderWorkout() {
         '<span class="target">' + target + ' · ⏱ ' + fmtTime(ex.rest) + '</span></div>' +
       (ex.note ? '<div class="exercise-note">⚠️ ' + esc(ex.note) + '</div>' : '') +
       '<div class="rec' + recClass + '">🧠 ' + esc(sEx.rec.message) + '</div>' +
+      rampHtml(ex, sEx) +
       setsHtml + rirHtml + painHtml +
     '</div>';
   }).join('');
@@ -379,6 +415,8 @@ function renderWorkout() {
     const v = inp.value === '' ? null : parseFloat(inp.value.replace(',', '.'));
     session.exercises[exIdx].sets[i][inp.dataset.f] = isNaN(v) ? null : v;
     saveSession(session);
+    // Aufwärmsätze hängen am Gewicht von Satz 1 – live nachziehen
+    if (inp.dataset.f === 'weight' && i === 0) updateRampRow(exIdx);
   }));
 
   $$('.set-check').forEach((btn) => btn.addEventListener('click', () => {
@@ -549,7 +587,7 @@ function updateSessionProgress() {
 }
 
 // Gemeinsame Logik, nachdem ein Satz erledigt wurde – egal ob per Häkchen oder Halte-Timer
-function handleSetCompleted(exIdx, i) {
+function handleSetCompleted(exIdx, i, fromTimer) {
   const sEx = session.exercises[exIdx];
   const ex = PLAN.exerciseById[sEx.id];
   const s = sEx.sets[i];
@@ -572,10 +610,10 @@ function handleSetCompleted(exIdx, i) {
     // Übung fertig -> Übungswechsel: mindestens 2 Min Pause, nächste Übung ansagen
     const nextEx = session.exercises.find((e) => !e.sets.every((x) => x.done));
     const nextName = nextEx ? PLAN.exerciseById[nextEx.id].name : '';
-    startRestTimer(Math.max(ex.rest, 120), 'Übung geschafft ✓', nextName ? 'Dann: ' + nextName : '');
+    startRestTimer(Math.max(ex.rest, 120), pickQuote(QUOTES.exerciseDone), nextName ? 'Dann: ' + nextName : '', fromTimer);
   } else {
     const doneCount = sEx.sets.filter((x) => x.done).length;
-    startRestTimer(ex.rest, 'Pause · ' + ex.name, 'Dann Satz ' + Math.min(doneCount + 1, sEx.sets.length) + ' von ' + sEx.sets.length);
+    startRestTimer(ex.rest, 'Pause · ' + ex.name, 'Dann Satz ' + Math.min(doneCount + 1, sEx.sets.length) + ' von ' + sEx.sets.length, fromTimer);
   }
 }
 
@@ -602,13 +640,41 @@ function stopSessionClock() {
 }
 
 // ---------- Rest-Timer (Kreis-Countdown) ----------
+// Läuft über echte Uhrzeit (Endzeitpunkt) statt über einen Zähler: iOS friert
+// Intervalle ein, sobald die App in den Hintergrund geht. Mit dem Endzeitpunkt
+// stimmt die Restzeit sofort wieder, wenn du zurückkommst – und der Stand wird
+// gespeichert, damit sogar ein App-Neustart die Pause nicht vergisst.
 
 const RING_R = 24, RING_C = 2 * Math.PI * RING_R;
+const REST_KEY = 'gymcoach.rest.v1';
+let restState = null; // { endsAt, total, title, sub }
 
-function startRestTimer(seconds, title, sub) {
-  stopRestTimer();
+// Zwischen Satzende und Abhaken vergehen ein paar Sekunden – die zählen schon
+// als Pause. Deshalb startet der Timer um diesen Ausgleich verkürzt (einstellbar).
+function restOffsetOf() {
+  return state.restOffset != null ? state.restOffset : 10;
+}
+
+// noOffset: nach Halte-Timer-Sätzen gibt es keine Antipp-Verzögerung – voller Pausenwert
+function startRestTimer(seconds, title, sub, noOffset) {
+  const secs = Math.max(20, seconds - (noOffset ? 0 : restOffsetOf()));
+  restState = {
+    endsAt: Date.now() + secs * 1000,
+    total: secs,
+    title: title || 'Pause läuft',
+    sub: sub || pickQuote(QUOTES.rest),
+  };
+  localStorage.setItem(REST_KEY, JSON.stringify(restState));
+  renderRestTimer();
+}
+
+function restRemaining() {
+  return Math.max(0, Math.round((restState.endsAt - Date.now()) / 1000));
+}
+
+function renderRestTimer() {
+  if (restInterval) clearInterval(restInterval);
   const el = $('#restTimer');
-  let total = seconds, remaining = seconds;
   el.classList.remove('hidden');
 
   el.innerHTML =
@@ -619,34 +685,68 @@ function startRestTimer(seconds, title, sub) {
       '</svg>' +
       '<div class="ring-time" id="ringTime"></div>' +
     '</div>' +
-    '<div class="rt-mid"><div class="rt-label">' + esc(title || 'Pause läuft') + '</div>' +
-    '<div class="rt-sub">' + esc(sub || 'Durchatmen, Schultern locker') + '</div></div>' +
+    '<div class="rt-mid"><div class="rt-label">' + esc(restState.title) + '</div>' +
+    '<div class="rt-sub">' + esc(restState.sub) + '</div></div>' +
     '<div class="rt-btns"><button id="addRest">+30s</button><button id="skipRest">Weiter ▶︎</button></div>';
 
   const draw = () => {
+    const remaining = restRemaining();
     $('#ringTime').textContent = fmtTime(remaining);
-    $('#ringFg').style.strokeDashoffset = String(RING_C * (1 - remaining / total));
+    $('#ringFg').style.strokeDashoffset = String(RING_C * Math.min(1, Math.max(0, 1 - remaining / restState.total)));
   };
   draw();
 
   $('#skipRest').addEventListener('click', stopRestTimer);
-  $('#addRest').addEventListener('click', () => { remaining += 30; total += 30; draw(); });
+  $('#addRest').addEventListener('click', () => {
+    restState.endsAt += 30000;
+    restState.total += 30;
+    localStorage.setItem(REST_KEY, JSON.stringify(restState));
+    draw();
+  });
 
   restInterval = setInterval(() => {
-    remaining--;
-    if (remaining <= 0) {
+    if (!restState) { stopRestTimer(); return; }
+    if (restRemaining() <= 0) {
       stopRestTimer();
       beep();
       toast('⏱ Pause vorbei – nächster Satz!');
     } else draw();
-  }, 1000);
+  }, 500);
 }
 
 function stopRestTimer() {
   if (restInterval) clearInterval(restInterval);
   restInterval = null;
+  restState = null;
+  localStorage.removeItem(REST_KEY);
   $('#restTimer').classList.add('hidden');
 }
+
+// Nach App-Neustart oder Rückkehr aus dem Hintergrund die laufende Pause wiederherstellen
+function restoreRestTimer() {
+  if (restState) return; // läuft bereits
+  try {
+    const saved = JSON.parse(localStorage.getItem(REST_KEY));
+    if (!saved) return;
+    if (!session || typeof saved.endsAt !== 'number' || !(saved.total > 0)) {
+      localStorage.removeItem(REST_KEY);
+      return;
+    }
+    if (saved.endsAt > Date.now()) {
+      restState = saved;
+      renderRestTimer();
+    } else {
+      localStorage.removeItem(REST_KEY);
+      if (Date.now() - saved.endsAt < 120000) toast('⏱ Pause ist um – weiter geht\'s!');
+    }
+  } catch (e) {
+    localStorage.removeItem(REST_KEY); // beschädigter Stand darf nicht liegen bleiben
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') restoreRestTimer();
+});
 
 // iOS erlaubt Ton nur aus einer Nutzer-Geste heraus. Deshalb einmal einen
 // gemeinsamen AudioContext beim ersten Tippen anlegen und wiederverwenden –
@@ -710,9 +810,21 @@ function startHoldTimer(exIdx, setIdx, wishSeconds) {
   const target = Math.max(5, wishSeconds || sEx.sets[setIdx].value || ex.timeTarget);
 
   closeHoldTimer();
+  // Laufende Pause merken: bei Abbruch in der Vorbereitung kommt sie zurück
+  // (versehentliches Antippen soll keine Pause vernichten)
+  const savedRest = restState ? Object.assign({}, restState) : null;
   stopRestTimer();
   initAudio();
   requestWakeLock();
+
+  const cancelPrep = () => {
+    closeHoldTimer();
+    if (savedRest && savedRest.endsAt > Date.now()) {
+      restState = savedRest;
+      localStorage.setItem(REST_KEY, JSON.stringify(restState));
+      renderRestTimer();
+    }
+  };
 
   let phase = 'prep';        // 'prep' -> 'hold'
   let remaining = PREP_SEC;
@@ -762,7 +874,7 @@ function startHoldTimer(exIdx, setIdx, wishSeconds) {
       beep(660, 0.4, [180]);
       toast('✓ ' + secondsHeld + ' Sekunden eingetragen');
     }
-    handleSetCompleted(exIdx, setIdx);
+    handleSetCompleted(exIdx, setIdx, true);
   };
 
   $('#htPause').addEventListener('click', () => {
@@ -772,11 +884,14 @@ function startHoldTimer(exIdx, setIdx, wishSeconds) {
   });
 
   $('#htStop').addEventListener('click', () => {
-    if (phase === 'prep') { closeHoldTimer(); return; }
+    if (phase === 'prep') { cancelPrep(); return; }
     finish(Math.max(1, target - remaining), false);
   });
 
-  $('#htCancel').addEventListener('click', closeHoldTimer);
+  $('#htCancel').addEventListener('click', () => {
+    if (phase === 'prep') cancelPrep();
+    else closeHoldTimer();
+  });
 
   holdInterval = setInterval(() => {
     if (paused) return;
@@ -1035,6 +1150,16 @@ function renderProgress() {
         '<button data-goal="3" class="' + (weeklyGoalOf(state) === 3 ? 'sel' : '') + '">3 pro Woche</button>' +
       '</div>' +
     '</div>' +
+    '<div class="section-label">Pausen-Timer</div>' +
+    '<div class="card">' +
+      '<p class="muted small">Zwischen Satzende und Abhaken vergehen ein paar Sekunden – die zählen schon als Pause. ' +
+      'Um diesen Ausgleich startet jeder Timer verkürzt:</p>' +
+      '<div class="cr-chips step-chips" style="margin-top:10px">' +
+        [0, 5, 10, 15, 20].map((s) =>
+          '<button class="chip-btn' + (restOffsetOf() === s ? ' on' : '') + '" data-restoffset="' + s + '">−' + s + ' s</button>'
+        ).join('') +
+      '</div>' +
+    '</div>' +
     '<div class="section-label">Daten</div>' +
     '<div class="card">' +
       '<p class="muted small">Deine Daten liegen nur auf diesem Gerät. Mach regelmäßig ein Backup!</p>' +
@@ -1050,6 +1175,13 @@ function renderProgress() {
     saveState(state);
     renderProgress();
     toast('🎯 Wochenziel: ' + state.weeklyGoal + " Trainings");
+  }));
+
+  $$('[data-restoffset]').forEach((b) => b.addEventListener('click', () => {
+    state.restOffset = +b.dataset.restoffset;
+    saveState(state);
+    renderProgress();
+    toast('⏱ Timer startet ab jetzt ' + state.restOffset + ' s verkürzt');
   }));
 
   $('#exSelect').addEventListener('change', (e) => { progressExId = e.target.value; drawChart(); });
@@ -1405,3 +1537,4 @@ if ('serviceWorker' in navigator) {
 // ---------- Start ----------
 
 render();
+restoreRestTimer();

@@ -13,6 +13,7 @@ function defaultState() {
     body: { heightCm: null, age: null, sex: null, activity: 1.6, entries: [] }, // Körperdaten & Check-ins
     badgeDates: {},      // wann welches Abzeichen freigeschaltet wurde (für die Zeitleiste)
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
+    restOffset: 10,      // Sekunden Bedien-Ausgleich, um die der Pausen-Timer verkürzt startet
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen
     rehabCount: 0,
     lastWorkoutKey: null,

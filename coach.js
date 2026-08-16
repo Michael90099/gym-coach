@@ -404,25 +404,55 @@ const QUOTES = {
     'Der schwerste Satz ist der erste Schritt durch die Tür – und den hast du geschafft.',
     'Heute wieder ein Stück stärker als gestern.',
     'Konstanz schlägt Intensität. Los geht\'s!',
+    'Du bist jemand, der auftaucht. Genau das trennt dich von 90 %.',
+    'Motivation bringt dich her. Gewohnheit bringt dich ans Ziel. Beides ist heute da.',
+    'In einer Stunde bist du stolz auf dich. Garantiert.',
+    'Dein einziger Gegner ist das Du von letzter Woche – und das schlägst du heute.',
+    'Nicht perfekt trainieren. Einfach trainieren. Der Rest ergibt sich.',
+  ],
+  workoutStart: [
+    'Fokus an. Die nächste Stunde gehört nur dir. 🎯',
+    'Erst das Aufwärmen – deine Schulter zahlt es dir zurück.',
+    'Qualität vor Ego: saubere Wiederholungen bauen den Körper, den du willst.',
+    'Jeder Satz heute ist eine Einzahlung. In 12 Wochen kassierst du.',
+    'Handy weg, Kopf frei – nur du und das Eisen. 💪',
+  ],
+  rest: [
+    'Durchatmen. Schultern locker.',
+    'Der nächste Satz gehört dir.',
+    'Kurz sammeln – dann sauber angreifen.',
+    'Wasser trinken, Fokus halten.',
+    'Ruhe ist Teil des Trainings.',
+  ],
+  exerciseDone: [
+    'Übung im Kasten! ✓',
+    'Sauber abgeliefert! 💪',
+    'Ein Haken mehr – weiter geht\'s!',
+    'Stark. Nächste Baustelle!',
   ],
   finishStrong: [
     'BOOM! Training im Kasten. So baut man eine unzerstörbare Schulter! 🔥',
     'Stark durchgezogen! Dein zukünftiges Ich klatscht gerade Beifall.',
     'Wieder ein Baustein mehr für die schmerzfreie Schulter. Weiter so!',
     'Sauber! Genau diese Konstanz macht in 8–12 Wochen den Unterschied.',
+    'Du hast heute wieder bewiesen: Du ziehst durch, wenn andere absagen.',
+    'Training erledigt. Muskeln wachsen jetzt – beim Essen und Schlafen. Gönn dir beides.',
   ],
   finishIncrease: [
     'GEWICHT GESTEIGERT! Das ist Progression, wie sie im Buche steht! 🚀',
     'Stärker als letzte Woche – mehr kann man an einem Tag nicht gewinnen.',
     'Die Rotatorenmanschette sagt danke: stärker UND kontrolliert. 💪',
+    'Neue Bestmarke! Schreib dir hinter die Ohren: DU wirst gerade stärker.',
   ],
   finishPain: [
     'Gut, dass du auf deinen Körper gehört hast. Schmerz managen ist auch Training.',
     'Kluges Training! Zurückschrauben heute = schneller schmerzfrei morgen.',
+    'Profis steuern die Last, Anfänger ignorieren sie. Du hast wie ein Profi trainiert.',
   ],
   comeback: [
     'Willkommen zurück! Wiedereinstieg ist der härteste Satz – erledigt. 💪',
     'Zurück am Eisen! Genau richtig: dranbleiben statt perfekt sein.',
+    'Pausen passieren. Zurückkommen ist die eigentliche Stärke.',
   ],
   streak: [
     'Deine Streak brennt! 🔥 Konstanz ist deine Superkraft.',
@@ -432,4 +462,21 @@ const QUOTES = {
 
 function pickQuote(list) {
   return list[Math.floor(Math.random() * list.length)];
+}
+
+// ---------- Aufwärmsätze (Ramp-up) ----------
+// Vor schweren Grundübungen: 2 aufsteigende Sätze (~50 % × 10, ~75 % × 5),
+// kurz pausiert, nicht ausbelastet. Verbessert Leistung im Arbeitssatz und
+// bereitet Gelenke/Sehnen vor – bei Impingement doppelt wichtig.
+// Leichte Isolations-/Rehaübungen brauchen keine eigenen Aufwärmsätze.
+
+function rampSets(ex, workWeight) {
+  if (!ex.ramp || ex.metric !== 'weight' || workWeight == null) return [];
+  const step = ex.step || 2.5;
+  const w50 = snapWeight(workWeight * 0.5, step, 'down');
+  const w75 = snapWeight(workWeight * 0.75, step, 'down');
+  const sets = [];
+  if (w50 >= step && w50 < workWeight) sets.push({ weight: w50, reps: 10 });
+  if (w75 > w50 && w75 < workWeight) sets.push({ weight: w75, reps: 5 });
+  return sets;
 }
