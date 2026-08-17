@@ -481,6 +481,8 @@ table.data-table td:first-child { color: var(--text); }
 
 #confettiCanvas { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
 
+.app-version { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; letter-spacing: 0.3px; }
+
 .hidden { display: none !important; }
 
 .empty { text-align: center; color: var(--muted); padding: 34px 10px; font-size: 14.5px; }

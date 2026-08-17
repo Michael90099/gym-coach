@@ -18,6 +18,13 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('de-AT', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
 
+// Versionsnummer aus dem eigenen Script-Tag – pflegt sich beim Bump von selbst
+function appVersion() {
+  const s = document.querySelector('script[src*="app.js"]');
+  const m = s && s.src.match(/v=(\d+)/);
+  return m ? m[1] : '?';
+}
+
 function fmtTime(sec) {
   return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
 }
@@ -218,7 +225,8 @@ function renderHome() {
         '<button class="btn secondary" id="homeCheckinBtn">Jetzt eintragen</button></div>'
       : '') +
     backupHintHtml() +
-    (badges ? '<div class="card"><h2>Letzte Abzeichen</h2><div>' + badges + '</div></div>' : '');
+    (badges ? '<div class="card"><h2>Letzte Abzeichen</h2><div>' + badges + '</div></div>' : '') +
+    '<div class="app-version">GymCoach v' + appVersion() + ' · Daten bleiben auf diesem Gerät</div>';
 
   $$('[data-count]').forEach((el) => animateCount(el, +el.dataset.count));
   requestAnimationFrame(() => {
