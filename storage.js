@@ -14,6 +14,7 @@ function defaultState() {
     badgeDates: {},      // wann welches Abzeichen freigeschaltet wurde (für die Zeitleiste)
     mobilityLogs: [],    // absolvierte Dehn-/Mobility-Einheiten
     mobilityGoal: 3,     // Dehneinheiten pro Woche (2–5)
+    soundMode: 'voice',  // 'voice' | 'beep' | 'off'
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
     restOffset: 10,      // Sekunden Bedien-Ausgleich, um die der Pausen-Timer verkürzt startet
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen

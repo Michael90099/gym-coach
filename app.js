@@ -725,7 +725,8 @@ function renderRestTimer() {
     if (!restState) { stopRestTimer(); return; }
     if (restRemaining() <= 0) {
       stopRestTimer();
-      beep();
+      playSound('rest');
+      say('Pause vorbei');
       toast('⏱ Pause vorbei – nächster Satz!');
     } else draw();
   }, 500);
@@ -769,8 +770,20 @@ document.addEventListener('visibilitychange', () => {
 // gemeinsamen AudioContext beim ersten Tippen anlegen und wiederverwenden –
 // sonst bleiben Töne aus Timer-Intervallen heraus stumm.
 let audioCtx = null;
+let voicePrimed = false;
+
+function soundMode() {
+  return state.soundMode || 'voice';   // 'off' | 'beep' | 'voice'
+}
 
 function initAudio() {
+  try {
+    // Entscheidend fürs iPhone: Ohne diese Zeile schaltet der seitliche
+    // Stummschalter jeden Web-Ton ab – im Studio hört man dann gar nichts.
+    if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+      navigator.audioSession.type = 'playback';
+    }
+  } catch (e) { /* ältere Systeme kennen das noch nicht */ }
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -779,20 +792,92 @@ function initAudio() {
 document.addEventListener('touchend', initAudio, { passive: true });
 document.addEventListener('click', initAudio, { passive: true });
 
-function beep(freq, dur, vibratePattern) {
-  const f = freq || 880, d = dur || 0.6;
+// Klangfolgen: f = Tonhöhe, t = Startversatz in Sek., d = Dauer, v = Lautstärke
+const SOUNDS = {
+  tick:     { tones: [{ f: 920, t: 0, d: 0.06, v: 0.3 }], vib: false },
+  go:       { tones: [{ f: 660, t: 0, d: 0.11, v: 0.5 }, { f: 990, t: 0.11, d: 0.2, v: 0.5 }], vib: [130] },
+  // Übung zu Ende: absteigender Dreiklang, bewusst kräftig und unverwechselbar
+  done:     { tones: [{ f: 1175, t: 0, d: 0.16, v: 0.75 }, { f: 880, t: 0.17, d: 0.16, v: 0.75 }, { f: 587, t: 0.34, d: 0.4, v: 0.8 }],
+              vib: [200, 90, 200, 90, 320] },
+  switch:   { tones: [{ f: 784, t: 0, d: 0.12, v: 0.6 }, { f: 784, t: 0.19, d: 0.14, v: 0.6 }], vib: [160, 100, 160] },
+  finish:   { tones: [{ f: 523, t: 0, d: 0.13, v: 0.6 }, { f: 659, t: 0.13, d: 0.13, v: 0.6 },
+                      { f: 784, t: 0.26, d: 0.13, v: 0.6 }, { f: 1047, t: 0.39, d: 0.5, v: 0.75 }],
+              vib: [200, 80, 200, 80, 200, 80, 420] },
+  rest:     { tones: [{ f: 880, t: 0, d: 0.16, v: 0.65 }, { f: 1175, t: 0.18, d: 0.34, v: 0.7 }], vib: [220, 110, 220] },
+};
+
+function playSound(name) {
+  const s = SOUNDS[name];
+  if (!s) return;
   try {
-    if (navigator.vibrate && vibratePattern !== false) navigator.vibrate(vibratePattern || [200, 100, 200]);
+    if (navigator.vibrate && s.vib) navigator.vibrate(s.vib);
+  } catch (e) { /* Vibration nicht verfügbar */ }
+  if (soundMode() === 'off') return;
+  try {
     initAudio();
     if (!audioCtx) return;
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.connect(g); g.connect(audioCtx.destination);
-    o.frequency.value = f;
-    g.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
-    o.start(); o.stop(audioCtx.currentTime + d);
+    const now = audioCtx.currentTime;
+    for (const t of s.tones) {
+      // Zwei Oszillatoren pro Ton: die Oktave darüber macht ihn im Studio durchdringender
+      [[t.f, 1], [t.f * 2, 0.35]].forEach(([freq, mix]) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'triangle';
+        o.connect(g); g.connect(audioCtx.destination);
+        o.frequency.value = freq;
+        const start = now + t.t;
+        g.gain.setValueAtTime(0.0001, start);
+        g.gain.exponentialRampToValueAtTime(Math.max(0.02, t.v * mix), start + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, start + t.d);
+        o.start(start); o.stop(start + t.d + 0.02);
+      });
+    }
   } catch (e) { /* Ton nicht verfügbar */ }
+}
+
+const SOUND_MODES = [
+  { key: 'voice', icon: '🗣', label: 'Töne + Ansage', desc: 'Signale plus gesprochene Übungsnamen und Seitenwechsel' },
+  { key: 'beep', icon: '🔔', label: 'Nur Töne', desc: 'Signaltöne ohne Sprachausgabe' },
+  { key: 'off', icon: '🔇', label: 'Stumm', desc: 'Nur Vibration, kein Ton' },
+];
+
+function soundIcon() {
+  const m = SOUND_MODES.find((x) => x.key === soundMode());
+  return m ? m.icon : '🔔';
+}
+
+function setSoundMode(mode) {
+  state.soundMode = mode;
+  saveState(state);
+  if (mode !== 'off') { initAudio(); playSound('go'); }
+  if (mode === 'voice') say('Ansage aktiv');
+}
+
+function cycleSoundMode() {
+  const i = SOUND_MODES.findIndex((x) => x.key === soundMode());
+  setSoundMode(SOUND_MODES[(i + 1) % SOUND_MODES.length].key);
+  toast(soundIcon() + ' ' + SOUND_MODES[(i + 1) % SOUND_MODES.length].label);
+}
+
+// Deutsche Sprachansage – gerade beim Dehnen am Boden hilfreich, wo man nicht aufs Handy schaut
+function say(text) {
+  if (soundMode() !== 'voice' || !text) return;
+  try {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'de-DE';
+    u.rate = 1.05;
+    u.volume = 1;
+    speechSynthesis.speak(u);
+    voicePrimed = true;
+  } catch (e) { /* Sprachausgabe nicht verfügbar */ }
+}
+
+// Alte Aufrufe weiterhin bedienen: Frequenz grob auf die neuen Klänge abbilden
+function beep(freq, dur, vibratePattern) {
+  if (freq === 920 || (freq && freq < 700 && dur && dur <= 0.12)) return playSound('tick');
+  if (freq && freq >= 1000) return playSound('finish');
+  return playSound('rest');
 }
 
 // ---------- Halte-Timer für Plank & Co. (Vollbild, vom Boden aus lesbar) ----------
@@ -894,10 +979,11 @@ function startHoldTimer(exIdx, setIdx, wishSeconds) {
     saveSession(session);
     renderWorkout();
     if (geschafft) {
-      beep(1046, 0.9, [200, 100, 200, 100, 320]);
+      playSound('done');
+      say('Geschafft');
       toast('💪 ' + secondsHeld + ' Sekunden geschafft!');
     } else {
-      beep(660, 0.4, [180]);
+      playSound('switch');
       toast('✓ ' + secondsHeld + ' Sekunden eingetragen');
     }
     handleSetCompleted(exIdx, setIdx, true);
@@ -929,16 +1015,17 @@ function startHoldTimer(exIdx, setIdx, wishSeconds) {
         remaining = target;
         el.classList.remove('prep');
         $('#htHint').textContent = 'Halten – ruhig weiteratmen';
-        beep(880, 0.35, [150]);
+        playSound('go');
+        say('Los');
       } else {
-        beep(660, 0.1, false);
+        playSound('tick');
       }
       draw();
       return;
     }
 
     if (remaining <= 0) { finish(target, true); return; }
-    if (remaining <= 3) beep(660, 0.1, false);
+    if (remaining <= 3) playSound('tick');
     draw();
   }, 1000);
 }
@@ -1176,6 +1263,24 @@ function renderProgress() {
         '<button data-goal="3" class="' + (weeklyGoalOf(state) === 3 ? 'sel' : '') + '">3 pro Woche</button>' +
       '</div>' +
     '</div>' +
+    '<div class="section-label">Ton & Ansage</div>' +
+    '<div class="card">' +
+      '<p class="muted small">Signale sagen dir, wann eine Übung oder Pause zu Ende ist – ohne aufs Handy zu schauen.</p>' +
+      '<div class="sound-list">' +
+        SOUND_MODES.map((m) =>
+          '<button class="variant-opt' + (soundMode() === m.key ? ' sel' : '') + '" data-soundmode="' + m.key + '">' +
+            '<div class="vo-name">' + m.icon + ' ' + esc(m.label) + (soundMode() === m.key ? ' <span class="vo-cur">aktiv</span>' : '') + '</div>' +
+            '<div class="vo-desc">' + esc(m.desc) + '</div>' +
+          '</button>'
+        ).join('') +
+      '</div>' +
+      '<div class="btn-row">' +
+        '<button class="btn secondary" data-testsound="done">🔔 Signal „Übung fertig"</button>' +
+        '<button class="btn secondary" data-testsound="voice">🗣 Ansage testen</button>' +
+      '</div>' +
+      '<p class="muted small" style="margin-top:10px">Hörst du am iPhone nichts, obwohl Töne aktiv sind: Der seitliche <b>Stummschalter</b> muss aus sein und die Lautstärke oben. ' +
+      'Die App bittet das System zwar darum, den Ton trotzdem durchzulassen – ältere iOS-Versionen ignorieren das aber.</p>' +
+    '</div>' +
     '<div class="section-label">Pausen-Timer</div>' +
     '<div class="card">' +
       '<p class="muted small">Zwischen Satzende und Abhaken vergehen ein paar Sekunden – die zählen schon als Pause. ' +
@@ -1201,6 +1306,22 @@ function renderProgress() {
     saveState(state);
     renderProgress();
     toast('🎯 Wochenziel: ' + state.weeklyGoal + " Trainings");
+  }));
+
+  $$('[data-soundmode]').forEach((b) => b.addEventListener('click', () => {
+    setSoundMode(b.dataset.soundmode);
+    renderProgress();
+    toast(soundIcon() + ' ' + SOUND_MODES.find((m) => m.key === state.soundMode).label);
+  }));
+
+  $$('[data-testsound]').forEach((b) => b.addEventListener('click', () => {
+    initAudio();
+    if (b.dataset.testsound === 'voice') {
+      if (soundMode() !== 'voice') { toast('🗣 Dafür „Töne + Ansage" wählen'); return; }
+      say('Brustdehnung im Türrahmen, linke Seite');
+    } else {
+      playSound('done');
+    }
   }));
 
   $$('[data-restoffset]').forEach((b) => b.addEventListener('click', () => {
@@ -1606,6 +1727,19 @@ const MOB_KEY = 'gymcoach.mobsession.v1';
 const MOB_R = 78, MOB_C = 2 * Math.PI * MOB_R;
 let mobSession = null;   // { routineKey, idx, phase, endsAt, paused, leftWhenPaused, startedAt }
 let mobInterval = null;
+let mobLastTickSec = null;
+
+// Sagt an, was jetzt kommt – beim Dehnen am Boden schaut man nicht aufs Handy
+function mobAnnounceStep() {
+  const steps = mobCurrentSteps();
+  const step = steps[mobSession.idx];
+  const ex = MOB_EXERCISES[step.exId];
+  const letzte = mobSession.idx === steps.length - 1 ? 'Letzte Übung. ' : '';
+  // Gleiche Übung, andere Seite -> nur den Seitenwechsel ansagen
+  const prev = steps[mobSession.idx - 1];
+  if (prev && prev.exId === step.exId && step.side) return say('Seite wechseln. ' + step.side);
+  say(letzte + ex.name + (step.side ? ', ' + step.side : ''));
+}
 
 function mobCurrentSteps() {
   const r = mobRoutine(mobSession.routineKey);
@@ -1642,6 +1776,7 @@ function startMobility(routineKey) {
   mobSave();
   renderMobPlayer();
   mobStartTicking();
+  mobAnnounceStep();
 }
 
 function mobStartTicking() {
@@ -1654,28 +1789,35 @@ function mobTick() {
   if (mobSession.paused) return;
   const left = mobLeft();
   mobDrawTime(left);
-  if (left <= 0) mobAdvance();
-  else if (left <= 3) beep(660, 0.09, false);
+  if (left <= 0) { mobAdvance(); return; }
+  // mobTick läuft viermal pro Sekunde – der Tick darf nur einmal je Sekunde kommen
+  if (left <= 3 && left !== mobLastTickSec) {
+    mobLastTickSec = left;
+    playSound('tick');
+  }
 }
 
 function mobAdvance() {
   const steps = mobCurrentSteps();
+  mobLastTickSec = null;
   if (mobSession.phase === 'prep') {
     mobSession.phase = 'work';
     mobSession.endsAt = Date.now() + steps[mobSession.idx].seconds * 1000;
-    beep(880, 0.3, [140]);
+    playSound('go');
     mobSave();
     renderMobPlayer();
     return;
   }
-  // Haltezeit vorbei -> nächster Schritt
-  if (mobSession.idx >= steps.length - 1) { finishMobility(); return; }
+  // Haltezeit vorbei -> deutliches Signal, dann die nächste Übung ansagen
+  const wasLast = mobSession.idx >= steps.length - 1;
+  playSound(wasLast ? 'finish' : 'done');
+  if (wasLast) { finishMobility(); return; }
   mobSession.idx++;
   mobSession.phase = 'prep';
   mobSession.endsAt = Date.now() + steps[mobSession.idx].prep * 1000;
-  beep(1046, 0.35, [180]);
   mobSave();
   renderMobPlayer();
+  mobAnnounceStep();
 }
 
 function mobJump(delta) {
@@ -1687,8 +1829,10 @@ function mobJump(delta) {
   mobSession.phase = 'prep';
   mobSession.paused = false;
   mobSession.endsAt = Date.now() + steps[next].prep * 1000;
+  mobLastTickSec = null;
   mobSave();
   renderMobPlayer();
+  mobAnnounceStep();
 }
 
 function mobTogglePause() {
@@ -1763,6 +1907,7 @@ function renderMobPlayer() {
     '<div class="mp-top">' +
       '<button id="mobQuitBtn" class="mp-quit" aria-label="Beenden">✕</button>' +
       '<div class="mp-count">Übung ' + (mobSession.idx + 1) + ' / ' + steps.length + ' · ' + esc(routine.name) + '</div>' +
+      '<button id="mobSoundBtn" class="mp-quit" aria-label="Ton umschalten">' + soundIcon() + '</button>' +
     '</div>' +
     '<div class="mp-bar"><div style="width:' + progress + '%"></div></div>' +
 
@@ -1799,6 +1944,10 @@ function renderMobPlayer() {
   mobDrawTime(mobLeft());
 
   $('#mobQuitBtn').addEventListener('click', mobQuit);
+  $('#mobSoundBtn').addEventListener('click', () => {
+    cycleSoundMode();
+    $('#mobSoundBtn').textContent = soundIcon();
+  });
   $('#mobPause').addEventListener('click', mobTogglePause);
   $('#mobPrev').addEventListener('click', () => mobJump(-1));
   $('#mobNext').addEventListener('click', () => mobJump(1));
@@ -1845,6 +1994,7 @@ function finishMobility() {
     '<button class="btn" id="closeMobSummary">Fertig 💪</button>'
   );
   setTimeout(() => animateCount($('#stNum'), pts, ''), 250);
+  say('Geschafft! ' + routine.name + ' abgeschlossen.');
   confetti(newBadges.length ? 120 : 80);
   $('#closeMobSummary').addEventListener('click', () => { hideOverlay(); switchTab('mobility'); applyPendingReloadIfSafe(); });
 }

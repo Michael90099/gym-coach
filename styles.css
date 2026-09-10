@@ -524,6 +524,10 @@ table.data-table td:first-child { color: var(--text); }
 .focus-tile.stale { border-color: rgba(255, 166, 87, 0.45); }
 .focus-tile.stale .ft-age { color: var(--accent); }
 
+.sound-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+.sound-list .variant-opt { padding: 11px 13px; }
+.mp-top .mp-count { flex: 1; }
+
 .mobility-hint { border-color: rgba(77, 212, 172, 0.4); }
 .mobility-hint h2 { color: var(--accent2); }
 
