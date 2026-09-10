@@ -120,6 +120,7 @@ function render() {
   if (currentTab === 'history') return renderHistory();
   if (currentTab === 'progress') return renderProgress();
   if (currentTab === 'body') return renderBody();
+  if (currentTab === 'mobility') return renderMobility();
   if (currentTab === 'plan') return renderPlanView();
 }
 
@@ -753,7 +754,7 @@ function restoreRestTimer() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') restoreRestTimer();
+  if (document.visibilityState === 'visible') { restoreRestTimer(); restoreMobility(); }
 });
 
 // iOS erlaubt Ton nur aus einer Nutzer-Geste heraus. Deshalb einmal einen
@@ -794,13 +795,22 @@ const PREP_SEC = 5;
 let holdInterval = null;
 let wakeLock = null;
 
+// wakeLockWanted verhindert ein Rennen: Wird der Timer geschlossen, bevor die
+// asynchrone Anfrage zurückkommt, bliebe der Bildschirm sonst dauerhaft an.
+let wakeLockWanted = false;
+
 async function requestWakeLock() {
+  wakeLockWanted = true;
   try {
-    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+    if (!('wakeLock' in navigator)) return;
+    const sentinel = await navigator.wakeLock.request('screen');
+    if (!wakeLockWanted) { sentinel.release(); return; }
+    wakeLock = sentinel;
   } catch (e) { /* Bildschirm-Sperre nicht beeinflussbar */ }
 }
 
 function releaseWakeLock() {
+  wakeLockWanted = false;
   try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
 }
 
@@ -1458,6 +1468,337 @@ function openProfileSheet() {
   });
 }
 
+// ---------- Dehnen & Mobility ----------
+
+function renderMobility() {
+  const logs = state.mobilityLogs || [];
+  const last = logs.length ? logs[logs.length - 1] : null;
+  const daysSince = last ? Math.floor((Date.now() - new Date(last.date).getTime()) / 86400000) : null;
+
+  const cards = MOB_ROUTINES.map((r) => {
+    const secs = mobilityDuration(r);
+    return '<button class="mob-card" data-routine="' + r.key + '">' +
+      '<div class="mc-head"><span class="mc-icon">' + r.icon + '</span>' +
+        '<span class="mc-name">' + esc(r.name) + '</span>' +
+        '<span class="mc-dur">' + fmtDuration(secs) + '</span></div>' +
+      '<div class="mc-desc">' + esc(r.desc) + '</div>' +
+      '<div class="mc-meta">' + r.exercises.length + ' Übungen · ' + mobilityPoints(secs) + ' Punkte</div>' +
+    '</button>';
+  }).join('');
+
+  const statusText = last
+    ? (daysSince === 0 ? 'Heute schon gedehnt – stark! 🌿'
+      : daysSince === 1 ? 'Gestern zuletzt gedehnt.'
+      : 'Zuletzt vor ' + daysSince + ' Tagen: ' + esc(last.routineName) + '.')
+    : 'Noch keine Einheit – ein guter Tag, um anzufangen.';
+
+  view.innerHTML =
+    '<div class="card hero">' +
+      '<div class="date-line">Beweglichkeit & Haltung</div>' +
+      '<div class="greeting">Dehnen mit Anleitung 🧘</div>' +
+      '<div class="quote">Ein Tipp drücken, den Rest übernimmt der Timer: Er führt dich Übung für Übung durch, sagt die Seiten an und zählt die Haltezeit.</div>' +
+    '</div>' +
+
+    '<div class="stat-row">' +
+      '<div class="stat-tile"><div class="val">' + logs.length + '</div><div class="lbl">Einheiten</div></div>' +
+      '<div class="stat-tile"><div class="val gold">' + Math.round(logs.reduce((s, l) => s + (l.seconds || 0), 0) / 60) + '</div><div class="lbl">Minuten gesamt</div></div>' +
+      '<div class="stat-tile"><div class="val">' + (daysSince == null ? '–' : daysSince) + '</div><div class="lbl">Tage her</div></div>' +
+    '</div>' +
+    '<div class="card"><p class="muted small" style="margin:0">' + statusText + '</p></div>' +
+
+    '<div class="section-label">Programm wählen</div>' + cards +
+
+    '<details class="fold"><summary>Worauf das Programm zielt</summary><div class="fold-body">' +
+      '<div class="plan-ex"><div><b>Schulter-Impingement.</b> Mehr Platz unter dem Schulterdach entsteht vor allem durch eine bewegliche Brustwirbelsäule und ein Schulterblatt, das beim Armheben mitdreht. Dazu Brust und Latissimus lösen, die die Schulter nach vorne ziehen.</div></div>' +
+      '<div class="plan-ex"><div><b>Vorgezogene Schultern.</b> Typisches Sitzmuster: Brust und Nacken fest, Schulterblatt- und tiefe Halsmuskeln schwach. Deshalb beides – dehnen UND ansteuern.</div></div>' +
+      '<div class="plan-ex"><div><b>Hohlkreuz.</b> Vorne ziehen die verkürzten Hüftbeuger das Becken nach unten, hinten fehlt die Haltearbeit von Gesäß und tiefer Bauchmuskulatur. Wichtig: Ein leichtes Hohlkreuz ist normal – es geht um Kontrolle, nicht ums Wegmachen.</div></div>' +
+      '<div class="plan-ex"><div><b>Auswärtsgang.</b> Angehbar ist der Weichteil-Anteil: feste Außenrotatoren, fehlende Innenrotation der Hüfte, steifes Sprunggelenk und ein schwacher mittlerer Gesäßmuskel. Ehrlich dazu: Liegt es an der Knochenform von Ober- oder Unterschenkel, ändert Dehnen daran nichts – schaden tut die Arbeit trotzdem nie.</div></div>' +
+      '<div class="plan-ex"><div><b>Longevity.</b> Hüfte, Brustwirbelsäule, Sprunggelenk und Gleichgewicht verlieren als Erstes an Qualität. Genau die stehen hier im Mittelpunkt.</div></div>' +
+      '<div class="plan-ex"><div class="px-muscle">Am besten nach dem Training oder an trainingsfreien Tagen. Vor schwerem Krafttraining lieber nur kurz mobilisieren statt lange statisch dehnen. Bei anhaltenden Schmerzen gehört die Schulter zu Ärztin oder Physiotherapie – das hier ersetzt keine Behandlung.</div></div>' +
+    '</div></details>';
+
+  $$('[data-routine]').forEach((b) => b.addEventListener('click', () => startMobility(b.dataset.routine)));
+}
+
+// ---------- Geführter Ablauf (Wanduhr-basiert, übersteht Hintergrund & Neustart) ----------
+
+const MOB_KEY = 'gymcoach.mobsession.v1';
+const MOB_R = 78, MOB_C = 2 * Math.PI * MOB_R;
+let mobSession = null;   // { routineKey, idx, phase, endsAt, paused, leftWhenPaused, startedAt }
+let mobInterval = null;
+
+function mobCurrentSteps() {
+  const r = mobRoutine(mobSession.routineKey);
+  return r ? mobilitySteps(r) : [];
+}
+
+function mobSave() {
+  if (mobSession) localStorage.setItem(MOB_KEY, JSON.stringify(mobSession));
+  else localStorage.removeItem(MOB_KEY);
+}
+
+function mobLeft() {
+  if (!mobSession) return 0;
+  if (mobSession.paused) return mobSession.leftWhenPaused;
+  return Math.max(0, Math.round((mobSession.endsAt - Date.now()) / 1000));
+}
+
+function startMobility(routineKey) {
+  const r = mobRoutine(routineKey);
+  if (!r) return;
+  stopRestTimer();   // sonst piept mitten im Dehnen die Trainingspause
+  initAudio();
+  requestWakeLock();
+  const steps = mobilitySteps(r);
+  mobSession = {
+    routineKey,
+    idx: 0,
+    phase: 'prep',
+    endsAt: Date.now() + steps[0].prep * 1000,
+    paused: false,
+    leftWhenPaused: 0,
+    startedAt: new Date().toISOString(),
+  };
+  mobSave();
+  renderMobPlayer();
+  mobStartTicking();
+}
+
+function mobStartTicking() {
+  if (mobInterval) clearInterval(mobInterval);
+  mobInterval = setInterval(mobTick, 250);
+}
+
+function mobTick() {
+  if (!mobSession) { clearInterval(mobInterval); mobInterval = null; return; }
+  if (mobSession.paused) return;
+  const left = mobLeft();
+  mobDrawTime(left);
+  if (left <= 0) mobAdvance();
+  else if (left <= 3) beep(660, 0.09, false);
+}
+
+function mobAdvance() {
+  const steps = mobCurrentSteps();
+  if (mobSession.phase === 'prep') {
+    mobSession.phase = 'work';
+    mobSession.endsAt = Date.now() + steps[mobSession.idx].seconds * 1000;
+    beep(880, 0.3, [140]);
+    mobSave();
+    renderMobPlayer();
+    return;
+  }
+  // Haltezeit vorbei -> nächster Schritt
+  if (mobSession.idx >= steps.length - 1) { finishMobility(); return; }
+  mobSession.idx++;
+  mobSession.phase = 'prep';
+  mobSession.endsAt = Date.now() + steps[mobSession.idx].prep * 1000;
+  beep(1046, 0.35, [180]);
+  mobSave();
+  renderMobPlayer();
+}
+
+function mobJump(delta) {
+  const steps = mobCurrentSteps();
+  const next = mobSession.idx + delta;
+  if (next < 0) return;
+  if (next >= steps.length) { finishMobility(); return; }
+  mobSession.idx = next;
+  mobSession.phase = 'prep';
+  mobSession.paused = false;
+  mobSession.endsAt = Date.now() + steps[next].prep * 1000;
+  mobSave();
+  renderMobPlayer();
+}
+
+function mobTogglePause() {
+  if (mobSession.paused) {
+    mobSession.paused = false;
+    mobSession.endsAt = Date.now() + mobSession.leftWhenPaused * 1000;
+  } else {
+    mobSession.leftWhenPaused = mobLeft();
+    mobSession.paused = true;
+  }
+  mobSave();
+  renderMobPlayer();
+}
+
+function mobQuit() {
+  if (!confirm('Programm beenden? Der Fortschritt dieser Einheit wird nicht gespeichert.')) return;
+  closeMobPlayer();
+  mobSession = null;
+  mobSave();
+  render();
+}
+
+function closeMobPlayer() {
+  if (mobInterval) clearInterval(mobInterval);
+  mobInterval = null;
+  releaseWakeLock();
+  const el = $('#mobPlayer');
+  if (el) el.remove();
+}
+
+function mobDrawTime(left) {
+  const t = $('#mobTime'), ring = $('#mobRing');
+  if (!t || !mobSession) return;
+  const steps = mobCurrentSteps();
+  const step = steps[mobSession.idx];
+  const total = mobSession.phase === 'prep' ? step.prep : step.seconds;
+  t.textContent = mobSession.phase === 'prep' ? String(Math.max(0, left)) : fmtTime(left);
+  if (ring) ring.style.strokeDashoffset = String(MOB_C * Math.min(1, Math.max(0, 1 - left / total)));
+}
+
+function renderMobPlayer() {
+  if (!mobSession) return;
+  const steps = mobCurrentSteps();
+  const step = steps[mobSession.idx];
+  const ex = MOB_EXERCISES[step.exId];
+  const routine = mobRoutine(mobSession.routineKey);
+  const isPrep = mobSession.phase === 'prep';
+
+  // Restzeit des gesamten Programms
+  let restSec = mobLeft();
+  for (let i = mobSession.idx + 1; i < steps.length; i++) restSec += steps[i].seconds + steps[i].prep;
+  if (isPrep) restSec += step.seconds;
+
+  const nextStep = steps[mobSession.idx + 1];
+  const nextEx = nextStep ? MOB_EXERCISES[nextStep.exId] : null;
+  const nextLabel = nextEx
+    ? esc(nextEx.name) + (nextStep.side ? ' · ' + esc(nextStep.side) : '')
+    : 'Letzte Übung – gleich geschafft!';
+
+  const cues = ex.cues.map((c) => '<li>' + esc(c) + '</li>').join('');
+  const progress = Math.round((mobSession.idx / steps.length) * 100);
+
+  let el = $('#mobPlayer');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mobPlayer';
+    el.className = 'mob-player';
+    document.body.appendChild(el);
+  }
+
+  el.innerHTML =
+    '<div class="mp-top">' +
+      '<button id="mobQuitBtn" class="mp-quit" aria-label="Beenden">✕</button>' +
+      '<div class="mp-count">Übung ' + (mobSession.idx + 1) + ' / ' + steps.length + ' · ' + esc(routine.name) + '</div>' +
+    '</div>' +
+    '<div class="mp-bar"><div style="width:' + progress + '%"></div></div>' +
+
+    '<div class="mp-scroll">' +
+      '<div class="mp-figwrap">' + mobilityFigure(step.exId) + '</div>' +
+      '<h2 class="mp-name">' + esc(ex.name) + '</h2>' +
+      '<div class="mp-sub">' + esc(ex.target) +
+        (step.side ? ' · <span class="mp-side">' + esc(step.side) + '</span>' : '') + '</div>' +
+
+      '<div class="mp-ringwrap' + (isPrep ? ' prep' : '') + (mobSession.paused ? ' paused' : '') + '">' +
+        '<svg viewBox="0 0 180 180">' +
+          '<circle cx="90" cy="90" r="' + MOB_R + '" fill="none" stroke="#2a3242" stroke-width="9"/>' +
+          '<circle id="mobRing" cx="90" cy="90" r="' + MOB_R + '" fill="none" stroke-width="9" stroke-linecap="round" ' +
+            'stroke-dasharray="' + MOB_C + '" stroke-dashoffset="0" transform="rotate(-90 90 90)"/>' +
+        '</svg>' +
+        '<div class="mp-timebox"><div class="mp-phase">' +
+          (mobSession.paused ? 'Pausiert' : isPrep ? 'Bereit machen' : 'Halten') +
+        '</div><div class="mp-time" id="mobTime">–</div></div>' +
+      '</div>' +
+
+      '<div class="mp-why">💡 ' + esc(ex.why) + '</div>' +
+      '<ul class="mp-cues">' + cues + '</ul>' +
+      (ex.caution ? '<div class="mp-caution">⚠️ ' + esc(ex.caution) + '</div>' : '') +
+      '<div class="mp-next">Als Nächstes: ' + nextLabel + '</div>' +
+      '<div class="mp-remain">Noch ca. ' + fmtDuration(restSec) + '</div>' +
+    '</div>' +
+
+    '<div class="mp-controls">' +
+      '<button id="mobPrev" class="mp-btn"' + (mobSession.idx === 0 ? ' disabled' : '') + '>↩︎</button>' +
+      '<button id="mobPause" class="mp-btn wide">' + (mobSession.paused ? '▶︎ Weiter' : '⏸ Pause') + '</button>' +
+      '<button id="mobNext" class="mp-btn">↪︎</button>' +
+    '</div>';
+
+  mobDrawTime(mobLeft());
+
+  $('#mobQuitBtn').addEventListener('click', mobQuit);
+  $('#mobPause').addEventListener('click', mobTogglePause);
+  $('#mobPrev').addEventListener('click', () => mobJump(-1));
+  $('#mobNext').addEventListener('click', () => mobJump(1));
+}
+
+function finishMobility() {
+  const routine = mobRoutine(mobSession.routineKey);
+  const steps = mobilitySteps(routine);
+  const seconds = steps.reduce((s, x) => s + x.seconds, 0);
+  const pts = mobilityPoints(mobilityDuration(routine));
+
+  closeMobPlayer();
+  const startedAt = mobSession.startedAt;
+  mobSession = null;
+  mobSave();
+
+  if (!state.mobilityLogs) state.mobilityLogs = [];
+  state.mobilityLogs.push({
+    id: 'mob_' + Date.now(),
+    date: new Date().toISOString(),
+    routineKey: routine.key,
+    routineName: routine.name,
+    exercises: routine.exercises.length,
+    seconds,
+    points: pts,
+    durationMin: Math.max(1, Math.round((Date.now() - new Date(startedAt).getTime()) / 60000)),
+  });
+  state.points += pts;
+  const newBadges = checkBadges(state);
+  saveState(state);
+
+  const badgesHtml = newBadges.map((b) =>
+    '<div class="new-badge"><span class="b-icon">' + b.icon + '</span><div><div class="b-name">Neues Abzeichen: ' + esc(b.name) + '</div>' +
+    '<div class="b-desc">' + esc(b.desc) + '</div></div></div>'
+  ).join('');
+
+  showOverlay(
+    '<h2>🧘 ' + esc(routine.name) + ' geschafft!</h2>' +
+    '<div class="summary-quote">' + esc(pickQuote(MOB_QUOTES)) + '</div>' +
+    '<div class="summary-total"><div class="st-num" id="stNum">0</div><div class="st-lbl">Punkte verdient</div></div>' +
+    '<div class="muted small">' + routine.exercises.length + ' Übungen · ' + fmtDuration(seconds) + ' reine Haltezeit · ' +
+      (state.mobilityLogs.length) + '. Dehneinheit insgesamt</div>' +
+    badgesHtml +
+    '<button class="btn" id="closeMobSummary">Fertig 💪</button>'
+  );
+  setTimeout(() => animateCount($('#stNum'), pts, ''), 250);
+  confetti(newBadges.length ? 120 : 80);
+  $('#closeMobSummary').addEventListener('click', () => { hideOverlay(); switchTab('mobility'); applyPendingReloadIfSafe(); });
+}
+
+// Nach Hintergrund/Neustart die laufende Einheit wieder aufnehmen
+function restoreMobility() {
+  if (mobSession) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(MOB_KEY));
+    if (!saved || !mobRoutine(saved.routineKey) || typeof saved.idx !== 'number') {
+      localStorage.removeItem(MOB_KEY);
+      return;
+    }
+    const steps = mobilitySteps(mobRoutine(saved.routineKey));
+    if (saved.idx < 0 || saved.idx >= steps.length) { localStorage.removeItem(MOB_KEY); return; }
+    // Zu lange her? Dann nicht mehr fortsetzen.
+    if (!saved.paused && Date.now() - saved.endsAt > 30 * 60000) { localStorage.removeItem(MOB_KEY); return; }
+    mobSession = saved;
+    // War der Bildschirm aus, sind womöglich mehrere Schritte "verfallen" –
+    // dann an der aktuellen Stelle sauber neu anhalten statt blind durchzuspringen.
+    if (!mobSession.paused && mobLeft() <= 0) {
+      mobSession.paused = true;
+      mobSession.leftWhenPaused = mobSession.phase === 'prep' ? steps[mobSession.idx].prep : steps[mobSession.idx].seconds;
+      mobSave();
+    }
+    initAudio();
+    requestWakeLock();
+    renderMobPlayer();
+    mobStartTicking();
+  } catch (e) {
+    localStorage.removeItem(MOB_KEY);
+  }
+}
+
 // ---------- Plan-Ansicht ----------
 
 function renderPlanView() {
@@ -1546,3 +1887,4 @@ if ('serviceWorker' in navigator) {
 
 render();
 restoreRestTimer();
+restoreMobility();

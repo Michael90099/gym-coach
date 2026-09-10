@@ -12,6 +12,7 @@ function defaultState() {
     steps: {},           // Gewichtsschritt je Übung im eigenen Studio: { exerciseId: kg }
     body: { heightCm: null, age: null, sex: null, activity: 1.6, entries: [] }, // Körperdaten & Check-ins
     badgeDates: {},      // wann welches Abzeichen freigeschaltet wurde (für die Zeitleiste)
+    mobilityLogs: [],    // absolvierte Dehn-/Mobility-Einheiten
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
     restOffset: 10,      // Sekunden Bedien-Ausgleich, um die der Pausen-Timer verkürzt startet
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen

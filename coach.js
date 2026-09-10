@@ -351,6 +351,9 @@ const BADGES = [
   { id: 'painfree_5', name: 'Schmerzfrei-Serie', icon: '😌', desc: '5 schmerzfreie Trainings in Folge' },
   { id: 'increases_10', name: 'Progressions-Maschine', icon: '🚀', desc: '10 Gewichtssteigerungen gesammelt' },
   { id: 'abc_complete', name: 'A-B-C komplett', icon: '🔤', desc: 'Alle drei Trainings mindestens einmal absolviert' },
+  { id: 'mobility_1', name: 'Erste Dehneinheit', icon: '🧘', desc: 'Zum ersten Mal ein Mobility-Programm durchgezogen' },
+  { id: 'mobility_10', name: 'Beweglich', icon: '🤸', desc: '10 Dehneinheiten absolviert' },
+  { id: 'mobility_25', name: 'Geschmeidig', icon: '🌊', desc: '25 Dehneinheiten – Beweglichkeit ist Gewohnheit geworden' },
 ];
 
 function checkBadges(state) {
@@ -391,6 +394,11 @@ function checkBadges(state) {
 
   const keys = new Set(state.logs.map((l) => l.workoutKey));
   if (keys.has('A') && keys.has('B') && keys.has('C')) grant('abc_complete');
+
+  const mob = (state.mobilityLogs || []).length;
+  if (mob >= 1) grant('mobility_1');
+  if (mob >= 10) grant('mobility_10');
+  if (mob >= 25) grant('mobility_25');
 
   return earned;
 }
