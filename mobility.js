@@ -503,22 +503,22 @@ const MOB_EXERCISES = {
 
 const MOB_ROUTINES = [
   {
-    key: 'express', name: 'Express', icon: '⚡',
+    key: 'express', name: 'Express', icon: '⚡', focus: ['shoulder', 'hips'],
     desc: 'Die fünf wirksamsten Übungen für deine Baustellen – wenn wenig Zeit ist.',
     exercises: ['tspine_ext', 'pec_door', 'hipflexor', 'piriformis', 'calf_wall'],
   },
   {
-    key: 'shoulder', name: 'Schulter & Haltung', icon: '🎯',
+    key: 'shoulder', name: 'Schulter & Haltung', icon: '🎯', focus: ['shoulder'],
     desc: 'Gegen Impingement und vorgezogene Schultern: Brust und Latissimus lösen, Brustwirbelsäule strecken, Schulterblatt ansteuern.',
     exercises: ['tspine_ext', 'open_book', 'pec_door', 'lat_stretch', 'neck_lev', 'chin_tuck', 'serratus_wall', 'wall_angel'],
   },
   {
-    key: 'hips', name: 'Hüfte, Rücken & Gang', icon: '🦵',
+    key: 'hips', name: 'Hüfte, Rücken & Gang', icon: '🦵', focus: ['hips'],
     desc: 'Gegen Hohlkreuz und Auswärtsgang: Hüftbeuger lösen, Gesäß und Rumpf aktivieren, Innenrotation und Sprunggelenk öffnen.',
     exercises: ['pelvic_tilt', 'hipflexor', 'glute_bridge', 'deadbug_ppt', 'hamstring', 'piriformis', 'hip_ir', 'adductor', 'calf_wall', 'glute_med', 'short_foot'],
   },
   {
-    key: 'full', name: 'Longevity komplett', icon: '🌿',
+    key: 'full', name: 'Longevity komplett', icon: '🌿', focus: ['shoulder', 'hips', 'longevity'],
     desc: 'Das ganze Programm: alle vier Baustellen plus Gleichgewicht, tiefe Hocke und Atmung. Einmal pro Woche ideal.',
     exercises: ['catcow', 'tspine_ext', 'open_book', 'pec_door', 'lat_stretch', 'chin_tuck', 'serratus_wall',
       'hipflexor', 'glute_bridge', 'deadbug_ppt', 'hamstring', 'piriformis', 'hip_ir', 'adductor',
@@ -553,6 +553,137 @@ function mobilityDuration(routine) {
 // Punkte: 5 pro angefangener Minute, mindestens 20
 function mobilityPoints(totalSeconds) {
   return Math.max(20, Math.round(totalSeconds / 60) * 5);
+}
+
+// ---------- Dehn-Coach: wie oft und was heute ----------
+// Wissenschaftlicher Hintergrund für die Empfehlung von 3× pro Woche:
+// Für echte Beweglichkeitsgewinne braucht eine Muskelgruppe etwa 5 Minuten
+// Dehnzeit pro Woche – verteilt auf mehrere Einheiten wirkt das besser als
+// alles an einem Tag. Unter 2× pro Woche geht kaum etwas voran, über 4× wird
+// der Zugewinn spürbar kleiner. Haltungsveränderung braucht zusätzlich
+// Kräftigung und Monate an Konstanz – deshalb zählt Regelmäßigkeit mehr als Länge.
+
+const MOB_GOAL_DEFAULT = 3;
+const MOB_FOCUS_LABELS = { shoulder: 'Schulter', hips: 'Hüfte & Gang', longevity: 'Longevity' };
+
+function mobilityGoalOf(state) {
+  return state.mobilityGoal || MOB_GOAL_DEFAULT;
+}
+
+function mobilityWeekCount(state) {
+  const wk = isoWeek(new Date().toISOString());
+  return (state.mobilityLogs || []).filter((l) => isoWeek(l.date) === wk).length;
+}
+
+// Wochen in Folge, in denen das Dehnziel erreicht wurde
+function mobilityStreak(state) {
+  const counts = {};
+  for (const l of state.mobilityLogs || []) {
+    const wk = isoWeek(l.date);
+    counts[wk] = (counts[wk] || 0) + 1;
+  }
+  const goal = mobilityGoalOf(state);
+  let streak = (counts[isoWeek(new Date().toISOString())] || 0) >= goal ? 1 : 0;
+  const d = new Date();
+  for (let i = 1; i < 300; i++) {
+    d.setDate(d.getDate() - 7);
+    if ((counts[isoWeek(d.toISOString())] || 0) >= goal) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// Wie viele Tage ist jeder Schwerpunkt her? null = noch nie
+function mobilityFocusAges(state) {
+  const ages = { shoulder: null, hips: null, longevity: null };
+  for (const log of state.mobilityLogs || []) {
+    const r = mobRoutine(log.routineKey);
+    if (!r) continue;
+    const days = Math.floor((Date.now() - new Date(log.date).getTime()) / 86400000);
+    for (const f of r.focus || []) {
+      if (ages[f] == null || days < ages[f]) ages[f] = days;
+    }
+  }
+  return ages;
+}
+
+// Welches Programm ist heute dran – und warum?
+function mobilityCoach(state) {
+  const goal = mobilityGoalOf(state);
+  const week = mobilityWeekCount(state);
+  const ages = mobilityFocusAges(state);
+  const total = (state.mobilityLogs || []).length;
+  const age = (f) => (ages[f] == null ? 999 : ages[f]);
+
+  if (!total) {
+    return {
+      key: 'express', tone: 'neutral', headline: 'Fang mit dem Express-Programm an',
+      advice: 'Sieben Minuten genügen für den Einstieg. Entscheidend ist nicht die Länge, sondern dass du wiederkommst – ' +
+        goal + '× pro Woche ist dein Ziel.',
+    };
+  }
+
+  const oldest = Math.min(age('shoulder'), age('hips'));
+  if (oldest >= 14) {
+    return {
+      key: 'express', tone: 'warn', headline: 'Zeit für einen Neustart',
+      advice: 'Die letzte Einheit ist ' + oldest + ' Tage her. Steig niederschwellig wieder ein – ' +
+        'sieben Minuten heute sind mehr wert als ein perfektes Programm irgendwann.',
+    };
+  }
+
+  if (age('shoulder') >= 7 && age('hips') >= 7) {
+    return {
+      key: 'full', tone: 'warn', headline: 'Beide Bereiche sind fällig',
+      advice: 'Schulter und Hüfte waren länger als eine Woche nicht dran. Das komplette Programm deckt beides ab – ' +
+        'und nimmt Gleichgewicht und tiefe Hocke gleich mit.',
+    };
+  }
+  if (age('shoulder') >= 7) {
+    return {
+      key: 'shoulder', tone: 'warn', headline: 'Deine Schulter ist dran',
+      advice: 'Seit ' + age('shoulder') + ' Tagen keine Schulterarbeit. Genau die Brustwirbelsäulen-Streckung und die ' +
+        'Schulterblatt-Ansteuerung schaffen den Platz unter dem Schulterdach – das verliert sich schnell wieder.',
+    };
+  }
+  if (age('hips') >= 7) {
+    return {
+      key: 'hips', tone: 'warn', headline: 'Hüfte und Gang sind dran',
+      advice: 'Seit ' + age('hips') + ' Tagen keine Hüftarbeit. Gegen Hohlkreuz und Auswärtsgang zählt vor allem ' +
+        'Regelmäßigkeit – die Hüftbeuger verkürzen beim Sitzen jeden Tag aufs Neue.',
+    };
+  }
+  if (age('longevity') >= 12) {
+    return {
+      key: 'full', tone: 'neutral', headline: 'Einmal das große Programm',
+      advice: 'Schulter und Hüfte sind frisch – aber Gleichgewicht, tiefe Hocke und Atmung waren ' +
+        (age('longevity') === 999 ? 'noch nie' : 'seit ' + age('longevity') + ' Tagen nicht') + ' dran. ' +
+        'Einmal pro Woche komplett hält alles beisammen.',
+    };
+  }
+
+  if (week < goal) {
+    const key = age('shoulder') >= age('hips') ? 'shoulder' : 'hips';
+    return {
+      key, tone: 'neutral', headline: 'Noch ' + (goal - week) + ' Einheit' + (goal - week > 1 ? 'en' : '') + ' diese Woche',
+      advice: 'Du liegst bei ' + week + ' von ' + goal + '. Am längsten her ist ' +
+        (key === 'shoulder' ? 'die Schulterarbeit' : 'die Hüftarbeit') + ' – die nehmen wir als Nächstes.',
+    };
+  }
+
+  return {
+    key: 'express', tone: 'good', headline: 'Wochenziel geschafft! 🌿',
+    advice: week + ' von ' + goal + ' Einheiten erledigt und beide Bereiche frisch. Alles Weitere ist Bonus – ' +
+      'öfter dehnen schadet nie, bringt aber ab hier weniger Zugewinn als Schlaf und Konstanz.',
+  };
+}
+
+// Soll auf der Startseite an eine Einheit erinnert werden?
+function mobilityDue(state) {
+  const logs = state.mobilityLogs || [];
+  if (!logs.length) return state.logs.length >= 2;
+  const days = (Date.now() - new Date(logs[logs.length - 1].date).getTime()) / 86400000;
+  return days >= 7;
 }
 
 const MOB_QUOTES = [

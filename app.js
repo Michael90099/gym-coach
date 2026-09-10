@@ -225,6 +225,12 @@ function renderHome() {
         '<p class="muted small">Einmal pro Woche wiegen hält dein Rekomp-Coaching scharf. Dauert 20 Sekunden, bringt ' + POINTS_CHECKIN + ' Punkte.</p>' +
         '<button class="btn secondary" id="homeCheckinBtn">Jetzt eintragen</button></div>'
       : '') +
+    (mobilityDue(state)
+      ? '<div class="card mobility-hint"><h2>🧘 Dehnen wäre dran</h2>' +
+        '<p class="muted small">' + esc(mobilityCoach(state).headline) + ' – ' +
+        fmtDuration(mobilityDuration(mobRoutine(mobilityCoach(state).key))) + '. Beweglichkeit hält sich nur mit Regelmäßigkeit.</p>' +
+        '<button class="btn secondary" id="homeMobBtn">Zum Dehn-Coach</button></div>'
+      : '') +
     backupHintHtml() +
     (badges ? '<div class="card"><h2>Letzte Abzeichen</h2><div>' + badges + '</div></div>' : '') +
     '<div class="app-version">GymCoach v' + appVersion() + ' · Daten bleiben auf diesem Gerät</div>';
@@ -244,6 +250,8 @@ function renderHome() {
   if (expBtn) expBtn.addEventListener('click', () => { exportData(state); renderHome(); toast('💾 Backup gespeichert'); });
   const ciBtn = $('#homeCheckinBtn');
   if (ciBtn) ciBtn.addEventListener('click', () => openCheckinSheet());
+  const mbBtn = $('#homeMobBtn');
+  if (mbBtn) mbBtn.addEventListener('click', () => switchTab('mobility'));
 }
 
 // ---------- Workout-Session ----------
@@ -1470,20 +1478,58 @@ function openProfileSheet() {
 
 // ---------- Dehnen & Mobility ----------
 
+// Wochenstreifen für Dehneinheiten (Mo–So)
+function mobWeekStripHtml() {
+  const names = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const days = new Set((state.mobilityLogs || []).map((l) => new Date(l.date).toDateString()));
+  return names.map((n, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const did = days.has(d.toDateString());
+    const isToday = d.toDateString() === now.toDateString();
+    return '<div class="wday' + (did ? ' trained' : '') + (isToday ? ' today' : '') + '">' +
+      '<div class="d-label">' + n + '</div>' +
+      '<div class="d-dot">' + (did ? '🧘' : d.getDate()) + '</div></div>';
+  }).join('');
+}
+
 function renderMobility() {
   const logs = state.mobilityLogs || [];
   const last = logs.length ? logs[logs.length - 1] : null;
   const daysSince = last ? Math.floor((Date.now() - new Date(last.date).getTime()) / 86400000) : null;
 
+  const coach = mobilityCoach(state);
+  const goal = mobilityGoalOf(state);
+  const week = mobilityWeekCount(state);
+  const streak = mobilityStreak(state);
+  const ages = mobilityFocusAges(state);
+  const recRoutine = mobRoutine(coach.key);
+
   const cards = MOB_ROUTINES.map((r) => {
     const secs = mobilityDuration(r);
-    return '<button class="mob-card" data-routine="' + r.key + '">' +
+    const isRec = r.key === coach.key;
+    return '<button class="mob-card' + (isRec ? ' recommended' : '') + '" data-routine="' + r.key + '">' +
       '<div class="mc-head"><span class="mc-icon">' + r.icon + '</span>' +
         '<span class="mc-name">' + esc(r.name) + '</span>' +
         '<span class="mc-dur">' + fmtDuration(secs) + '</span></div>' +
       '<div class="mc-desc">' + esc(r.desc) + '</div>' +
-      '<div class="mc-meta">' + r.exercises.length + ' Übungen · ' + mobilityPoints(secs) + ' Punkte</div>' +
+      '<div class="mc-meta">' + r.exercises.length + ' Übungen · ' + mobilityPoints(secs) + ' Punkte' +
+        (isRec ? ' <span class="mc-rec">· heute empfohlen</span>' : '') + '</div>' +
     '</button>';
+  }).join('');
+
+  // Wie frisch ist jeder Schwerpunkt?
+  const focusTiles = ['shoulder', 'hips', 'longevity'].map((f) => {
+    const a = ages[f];
+    const limit = f === 'longevity' ? 12 : 7;
+    const cls = a == null ? 'stale' : a >= limit ? 'stale' : a >= limit - 2 ? 'soon' : 'fresh';
+    const txt = a == null ? 'nie' : a === 0 ? 'heute' : a === 1 ? 'gestern' : 'vor ' + a + ' T.';
+    return '<div class="focus-tile ' + cls + '"><div class="ft-name">' + esc(MOB_FOCUS_LABELS[f]) + '</div>' +
+      '<div class="ft-age">' + txt + '</div></div>';
   }).join('');
 
   const statusText = last
@@ -1499,12 +1545,39 @@ function renderMobility() {
       '<div class="quote">Ein Tipp drücken, den Rest übernimmt der Timer: Er führt dich Übung für Übung durch, sagt die Seiten an und zählt die Haltezeit.</div>' +
     '</div>' +
 
+    // Coach-Empfehlung
+    '<div class="card coach-card ' + coach.tone + '">' +
+      '<div class="cc-label">Dein Dehn-Coach</div>' +
+      '<h2 class="cc-head">' + esc(coach.headline) + '</h2>' +
+      '<p class="cc-advice">' + esc(coach.advice) + '</p>' +
+      '<button class="btn" id="coachStart">▶︎ ' + recRoutine.icon + ' ' + esc(recRoutine.name) +
+        ' · ' + fmtDuration(mobilityDuration(recRoutine)) + '</button>' +
+    '</div>' +
+
+    // Wochenziel
+    '<div class="card">' +
+      '<h2>Diese Woche · ' + week + ' / ' + goal + ' Einheiten' + (streak > 0 ? ' · 🔥 ' + streak + ' Wo.' : '') + '</h2>' +
+      '<div class="week-strip">' + mobWeekStripHtml() + '</div>' +
+      '<div class="cr-chips step-chips" style="margin-top:12px;justify-content:center">' +
+        [2, 3, 4, 5].map((g) => '<button class="chip-btn' + (goal === g ? ' on' : '') + '" data-mobgoal="' + g + '">' + g + '×</button>').join('') +
+      '</div>' +
+      '<p class="muted small" style="margin-top:10px">Für echte Beweglichkeitsgewinne braucht jede Muskelgruppe rund 5 Minuten Dehnzeit pro Woche – ' +
+      'verteilt wirkt das besser als alles an einem Tag. Unter 2× die Woche bewegt sich kaum etwas, über 4× wird der Zugewinn deutlich kleiner. ' +
+      '<b>3× ist der beste Kompromiss.</b></p>' +
+    '</div>' +
+
+    // Abdeckung der Schwerpunkte
+    '<div class="card">' +
+      '<h2>Zuletzt trainiert</h2>' +
+      '<div class="focus-row">' + focusTiles + '</div>' +
+      '<p class="muted small" style="margin-top:10px">' + statusText + '</p>' +
+    '</div>' +
+
     '<div class="stat-row">' +
       '<div class="stat-tile"><div class="val">' + logs.length + '</div><div class="lbl">Einheiten</div></div>' +
       '<div class="stat-tile"><div class="val gold">' + Math.round(logs.reduce((s, l) => s + (l.seconds || 0), 0) / 60) + '</div><div class="lbl">Minuten gesamt</div></div>' +
-      '<div class="stat-tile"><div class="val">' + (daysSince == null ? '–' : daysSince) + '</div><div class="lbl">Tage her</div></div>' +
+      '<div class="stat-tile"><div class="val flame">' + streak + '</div><div class="lbl">Wochen-Streak</div></div>' +
     '</div>' +
-    '<div class="card"><p class="muted small" style="margin:0">' + statusText + '</p></div>' +
 
     '<div class="section-label">Programm wählen</div>' + cards +
 
@@ -1518,6 +1591,13 @@ function renderMobility() {
     '</div></details>';
 
   $$('[data-routine]').forEach((b) => b.addEventListener('click', () => startMobility(b.dataset.routine)));
+  $('#coachStart').addEventListener('click', () => startMobility(coach.key));
+  $$('[data-mobgoal]').forEach((b) => b.addEventListener('click', () => {
+    state.mobilityGoal = +b.dataset.mobgoal;
+    saveState(state);
+    renderMobility();
+    toast('🎯 Dehnziel: ' + state.mobilityGoal + '× pro Woche');
+  }));
 }
 
 // ---------- Geführter Ablauf (Wanduhr-basiert, übersteht Hintergrund & Neustart) ----------

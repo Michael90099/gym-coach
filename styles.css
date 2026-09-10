@@ -501,6 +501,32 @@ table.data-table td:first-child { color: var(--text); }
 
 .mob-fig { width: 100%; height: auto; display: block; }
 
+.mob-card.recommended { border-color: rgba(77, 212, 172, 0.55); box-shadow: 0 6px 22px rgba(77, 212, 172, 0.14); }
+.mc-rec { color: var(--accent2); font-weight: 800; }
+
+/* Dehn-Coach */
+.coach-card { border-color: rgba(77, 212, 172, 0.4); }
+.coach-card.warn { border-color: rgba(255, 166, 87, 0.5); }
+.coach-card.good { border-color: rgba(255, 209, 102, 0.45); }
+.cc-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent2); }
+.coach-card.warn .cc-label { color: var(--accent); }
+.coach-card.good .cc-label { color: var(--gold); }
+.cc-head { font-size: 18px; font-weight: 800; margin: 4px 0 0; }
+.cc-advice { font-size: 13.5px; color: var(--text2); line-height: 1.45; margin-top: 6px; }
+
+.focus-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.focus-tile { background: var(--surface2); border: 1px solid var(--border); border-radius: 11px; padding: 10px 6px; text-align: center; }
+.focus-tile .ft-name { font-size: 11.5px; font-weight: 700; color: var(--text2); }
+.focus-tile .ft-age { font-size: 13px; font-weight: 800; margin-top: 3px; }
+.focus-tile.fresh { border-color: rgba(77, 212, 172, 0.45); }
+.focus-tile.fresh .ft-age { color: var(--accent2); }
+.focus-tile.soon .ft-age { color: var(--gold); }
+.focus-tile.stale { border-color: rgba(255, 166, 87, 0.45); }
+.focus-tile.stale .ft-age { color: var(--accent); }
+
+.mobility-hint { border-color: rgba(77, 212, 172, 0.4); }
+.mobility-hint h2 { color: var(--accent2); }
+
 /* ---------- Dehnen: geführter Ablauf ---------- */
 .mob-player {
   position: fixed; inset: 0; z-index: 80;
