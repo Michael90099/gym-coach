@@ -319,7 +319,7 @@ function setInputsHtml(ex, sEx, i) {
   const w = s.weight != null ? s.weight : '';
   let inputs = '';
   if (ex.metric === 'weight' || ex.metric === 'distance') {
-    inputs += '<input type="number" inputmode="decimal" step="' + stepOf(ex, state.steps) + '" data-f="weight" data-i="' + i + '" value="' + w + '" placeholder="kg">' +
+    inputs += '<input type="text" inputmode="decimal" data-f="weight" data-i="' + i + '" value="' + w + '" placeholder="kg">' +
       '<span class="unit' + (ex.perHand ? ' per-hand' : '') + '">' + weightUnit(ex) + '</span>';
   }
   if (ex.metric === 'weight' || ex.metric === 'reps') {
@@ -1559,9 +1559,9 @@ function openCheckinSheet() {
     '<h2>⚖️ Wochen-Check-in</h2>' +
     '<p class="muted small">Am besten immer gleich: morgens, nüchtern, nach dem Aufstehen. Taille auf Bauchnabelhöhe, entspannt ausgeatmet.</p>' +
     '<div class="set-row" style="margin-top:12px"><span class="set-num" style="width:70px">Gewicht</span>' +
-      '<input type="number" inputmode="decimal" step="0.1" id="ciWeight" value="' + (last ? last.weightKg : '') + '" placeholder="kg"><span class="unit">kg</span></div>' +
+      '<input type="text" inputmode="decimal" id="ciWeight" value="' + (last ? last.weightKg : '') + '" placeholder="kg"><span class="unit">kg</span></div>' +
     '<div class="set-row"><span class="set-num" style="width:70px">Taille</span>' +
-      '<input type="number" inputmode="decimal" step="0.5" id="ciWaist" value="' + (last && last.waistCm != null ? last.waistCm : '') + '" placeholder="optional"><span class="unit">cm</span></div>' +
+      '<input type="text" inputmode="decimal" id="ciWaist" value="' + (last && last.waistCm != null ? last.waistCm : '') + '" placeholder="optional"><span class="unit">cm</span></div>' +
     '<div class="btn-row">' +
       '<button class="btn secondary" id="ciCancel">Abbrechen</button>' +
       '<button class="btn" id="ciSave">Speichern ✓</button>' +
@@ -2558,7 +2558,7 @@ function finishRun() {
 
   if (type === 'test') return askCooperDistance(seconds, startedAt);
   if (type === 'interval') return askIntervalFeedback(level, seconds, startedAt);
-  saveRunLog({ type, level, seconds, startedAt });
+  askEasyDetails(type, level, seconds, startedAt);
 }
 
 function saveRunLog(o) {
@@ -2613,7 +2613,11 @@ function saveRunLog(o) {
       : '') +
     '<div class="muted small" style="margin-top:10px">' + log.durationMin + ' Min unterwegs · +' + pts + ' Punkte · ' +
       state.runLogs.length + '. Lauf insgesamt' +
-      (log.hrAvg ? ' · ❤️ ø ' + log.hrAvg + ' / max ' + log.hrMax + ' bpm' : '') + '</div>' +
+      (log.hrAvg ? ' · ❤️ ø ' + log.hrAvg + (log.hrMax ? ' / max ' + log.hrMax : '') + ' bpm' : '') +
+      (log.distanceM ? ' · ' + (log.distanceM / 1000).toFixed(2).replace('.', ',') + ' km' : '') + '</div>' +
+    (o.type === 'interval' && zoneVerdict(log.hrMax)
+      ? '<div class="zone-verdict ' + (zoneVerdict(log.hrMax).ok ? 'ok' : 'miss') + '">' +
+        esc(zoneVerdict(log.hrMax).text) + '</div>' : '') +
     badgesHtml +
     '<button class="btn" id="closeRunSummary">Fertig 💪</button>'
   );
@@ -2621,6 +2625,44 @@ function saveRunLog(o) {
   say(levelUp ? 'Geschafft! Stufe aufgestiegen.' : 'Geschafft!');
   confetti(levelUp || newBadges.length ? 130 : 85);
   $('#closeRunSummary').addEventListener('click', () => { hideOverlay(); switchTab('running'); applyPendingReloadIfSafe(); });
+}
+
+// Nachtragefelder für Werte, die Uhr, Brustgurt-App oder Strava anzeigen.
+// Der Gurt lässt sich am iPhone nicht direkt anbinden – zwei Zahlen abtippen schon.
+function hrFieldsHtml(withDistance) {
+  return '<div class="section-label" style="margin-top:14px">Von Uhr, Gurt-App oder Strava (optional)</div>' +
+    '<div class="set-row"><span class="set-num" style="width:88px">Puls ø</span>' +
+      '<input type="number" inputmode="numeric" id="manHrAvg" placeholder="z.B. 152"><span class="unit">bpm</span></div>' +
+    '<div class="set-row"><span class="set-num" style="width:88px">Puls max</span>' +
+      '<input type="number" inputmode="numeric" id="manHrMax" placeholder="z.B. 178"><span class="unit">bpm</span></div>' +
+    (withDistance
+      ? '<div class="set-row"><span class="set-num" style="width:88px">Strecke</span>' +
+        '<input type="text" inputmode="decimal" id="manDist" placeholder="z.B. 6,4"><span class="unit">km</span></div>'
+      : '');
+}
+
+function readHrFields(o) {
+  const num = (id, lo, hi) => {
+    const el = $('#' + id);
+    if (!el || el.value.trim() === '') return null;
+    const v = parseFloat(el.value.replace(',', '.'));
+    return isNaN(v) || v < lo || v > hi ? null : v;
+  };
+  const avg = num('manHrAvg', 60, 230), max = num('manHrMax', 60, 230), dist = num('manDist', 0.3, 100);
+  if (avg) o.hrAvg = Math.round(avg);
+  if (max) o.hrMax = Math.round(max);
+  if (dist) o.distanceM = Math.round(dist * 1000);
+  return o;
+}
+
+// Hat der Spitzenpuls den Intervallbereich erreicht? (mind. 90 % der maximalen HF)
+function zoneVerdict(hrMax) {
+  const z = hrZones(state);
+  if (!z || !hrMax) return null;
+  const soll = Math.round(z.hrMax * 0.9);
+  if (hrMax >= soll) return { ok: true, text: '🎯 Zielbereich erreicht (' + hrMax + ' bpm, nötig ab ' + soll + ')' };
+  if (hrMax >= Math.round(z.hrMax * 0.85)) return { ok: false, text: '🟡 Knapp darunter (' + hrMax + ' bpm, Ziel ab ' + soll + ') – nächstes Mal etwas mehr Tempo' };
+  return { ok: false, text: '🟠 Deutlich unter dem Zielbereich (' + hrMax + ' bpm, Ziel ab ' + soll + ') – die Intervalle dürfen richtig wehtun' };
 }
 
 function askIntervalFeedback(level, seconds, startedAt) {
@@ -2634,12 +2676,35 @@ function askIntervalFeedback(level, seconds, startedAt) {
         '<div class="vo-desc">Hart, aber alle Intervalle in guter Qualität – genau richtig</div></button>' +
       '<button class="variant-opt" data-fb="hard"><div class="vo-name">🥵 Zu hart</div>' +
         '<div class="vo-desc">Das Tempo brach ein oder ich musste abbrechen – Stufe bleibt</div></button>' +
-    '</div>'
+    '</div>' +
+    hrFieldsHtml(true)
   );
   $$('[data-fb]').forEach((b) => b.addEventListener('click', () => {
+    const o = readHrFields({ type: 'interval', level, seconds, startedAt, feedback: b.dataset.fb });
     hideOverlay();
-    saveRunLog({ type: 'interval', level, seconds, startedAt, feedback: b.dataset.fb });
+    saveRunLog(o);
   }));
+}
+
+function askEasyDetails(type, level, seconds, startedAt) {
+  showOverlay(
+    '<h2>🌿 Dauerlauf erledigt!</h2>' +
+    '<p class="muted small">Magst du noch nachtragen, was deine Uhr oder Strava anzeigt? Dann kann die App prüfen, ' +
+    'ob du wirklich im ruhigen Bereich unterwegs warst.</p>' +
+    hrFieldsHtml(true) +
+    '<div class="btn-row">' +
+      '<button class="btn secondary" id="easySkip">Ohne Werte</button>' +
+      '<button class="btn" id="easySave">Speichern ✓</button>' +
+    '</div>'
+  );
+  const finish = (withFields) => {
+    // Erst lesen, dann schliessen – sonst sind die Felder schon weg
+    const o = withFields ? readHrFields({ type, level, seconds, startedAt }) : { type, level, seconds, startedAt };
+    hideOverlay();
+    saveRunLog(o);
+  };
+  $('#easySkip').addEventListener('click', () => finish(false));
+  $('#easySave').addEventListener('click', () => finish(true));
 }
 
 function askCooperDistance(seconds, startedAt) {
@@ -2648,7 +2713,8 @@ function askCooperDistance(seconds, startedAt) {
     '<p class="muted small">Die in den 12 Minuten zurückgelegte Strecke – ablesbar auf Laufuhr, Handy-App oder an der Bahn ' +
     '(eine Runde = 400 m). Daraus schätzt die App deine VO2max.</p>' +
     '<div class="set-row" style="margin-top:12px"><span class="set-num" style="width:70px">Strecke</span>' +
-      '<input type="number" inputmode="decimal" step="10" id="cooperM" placeholder="z.B. 2400"><span class="unit">m</span></div>' +
+      '<input type="text" inputmode="decimal" id="cooperM" placeholder="z.B. 2400"><span class="unit">m</span></div>' +
+    hrFieldsHtml(false) +
     '<div class="btn-row">' +
       '<button class="btn secondary" id="cooperSkip">Ohne Wert</button>' +
       '<button class="btn" id="cooperSave">Auswerten ✓</button>' +
@@ -2658,10 +2724,11 @@ function askCooperDistance(seconds, startedAt) {
     hideOverlay(); saveRunLog({ type: 'test', seconds, startedAt });
   });
   $('#cooperSave').addEventListener('click', () => {
-    const m = parseInt(($('#cooperM').value || '').replace(',', '.'), 10);
+    const m = Math.round(parseFloat(($('#cooperM').value || '').replace(',', '.')));
     if (isNaN(m) || m < 500 || m > 6000) { alert('Bitte eine Strecke zwischen 500 und 6000 Metern eintragen.'); return; }
+    const o = readHrFields({ type: 'test', seconds, startedAt, distanceM: m, vo2max: cooperVo2max(m) });
     hideOverlay();
-    saveRunLog({ type: 'test', seconds, startedAt, distanceM: m, vo2max: cooperVo2max(m) });
+    saveRunLog(o);
   });
 }
 
