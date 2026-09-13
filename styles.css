@@ -528,6 +528,42 @@ table.data-table td:first-child { color: var(--text); }
 .sound-list .variant-opt { padding: 11px 13px; }
 .mp-top .mp-count { flex: 1; }
 
+/* Laufen */
+.lvl-ladder { display: flex; flex-direction: column; gap: 6px; }
+.lvl-step {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 10px 12px; border-radius: 11px; background: var(--surface2);
+  border: 1px solid var(--border); transition: all 0.18s;
+}
+.lvl-step .ls-num {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  background: var(--border); color: var(--text2); font-size: 12px; font-weight: 800;
+  display: grid; place-items: center;
+}
+.lvl-step .ls-name { flex: 1; font-size: 14px; font-weight: 700; color: var(--text2); }
+.lvl-step .ls-target { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; color: var(--gold); }
+.lvl-step .ls-prog { font-size: 12px; font-weight: 800; color: var(--accent2); }
+.lvl-step.done .ls-num { background: rgba(77, 212, 172, 0.25); color: var(--accent2); }
+.lvl-step.done .ls-name { color: var(--muted); }
+.lvl-step.current { border-color: var(--accent); background: rgba(255, 166, 87, 0.09); }
+.lvl-step.current .ls-num { background: var(--accent); color: #1f1204; }
+.lvl-step.current .ls-name { color: var(--text); }
+
+.rp-phase { text-align: center; margin-bottom: 4px; }
+.rp-icon { font-size: 40px; line-height: 1; }
+.rp-phase.work .mp-name { color: var(--accent); }
+.rp-zone {
+  text-align: center; font-size: 15px; font-weight: 800; color: var(--danger);
+  background: rgba(255, 107, 107, 0.09); border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 10px; padding: 8px; margin-bottom: 10px;
+}
+.rp-talk {
+  font-size: 12.5px; color: var(--text2); background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; margin-bottom: 10px;
+}
+.running-hint { border-color: rgba(255, 166, 87, 0.45); }
+.running-hint h2 { color: var(--accent); }
+
 .mobility-hint { border-color: rgba(77, 212, 172, 0.4); }
 .mobility-hint h2 { color: var(--accent2); }
 

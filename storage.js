@@ -15,6 +15,9 @@ function defaultState() {
     mobilityLogs: [],    // absolvierte Dehn-/Mobility-Einheiten
     mobilityGoal: 3,     // Dehneinheiten pro Woche (2–5)
     soundMode: 'voice',  // 'voice' | 'beep' | 'off'
+    runLogs: [],         // absolvierte Laufeinheiten
+    runLevel: 1,         // Intervall-Stufe 1–6 (Ziel: 4×4)
+    runHrMax: null,      // selbst gemessene maximale Herzfrequenz, sonst Schätzung
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
     restOffset: 10,      // Sekunden Bedien-Ausgleich, um die der Pausen-Timer verkürzt startet
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen

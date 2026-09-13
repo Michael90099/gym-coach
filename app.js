@@ -121,6 +121,7 @@ function render() {
   if (currentTab === 'progress') return renderProgress();
   if (currentTab === 'body') return renderBody();
   if (currentTab === 'mobility') return renderMobility();
+  if (currentTab === 'running') return renderRunning();
   if (currentTab === 'plan') return renderPlanView();
 }
 
@@ -231,6 +232,11 @@ function renderHome() {
         fmtDuration(mobilityDuration(mobRoutine(mobilityCoach(state).key))) + '. Beweglichkeit hält sich nur mit Regelmäßigkeit.</p>' +
         '<button class="btn secondary" id="homeMobBtn">Zum Dehn-Coach</button></div>'
       : '') +
+    (runningDue(state)
+      ? '<div class="card running-hint"><h2>🏃 Lauftraining wäre dran</h2>' +
+        '<p class="muted small">' + esc(runCoach(state).headline) + '. Die VO2max ist der stärkste Einzelwert für ein langes Leben – und sie hält sich nur mit Reiz.</p>' +
+        '<button class="btn secondary" id="homeRunBtn">Zum Lauf-Coach</button></div>'
+      : '') +
     backupHintHtml() +
     (badges ? '<div class="card"><h2>Letzte Abzeichen</h2><div>' + badges + '</div></div>' : '') +
     '<div class="app-version">GymCoach v' + appVersion() + ' · Daten bleiben auf diesem Gerät</div>';
@@ -252,6 +258,8 @@ function renderHome() {
   if (ciBtn) ciBtn.addEventListener('click', () => openCheckinSheet());
   const mbBtn = $('#homeMobBtn');
   if (mbBtn) mbBtn.addEventListener('click', () => switchTab('mobility'));
+  const rnBtn = $('#homeRunBtn');
+  if (rnBtn) rnBtn.addEventListener('click', () => switchTab('running'));
 }
 
 // ---------- Workout-Session ----------
@@ -763,7 +771,7 @@ function restoreRestTimer() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { restoreRestTimer(); restoreMobility(); }
+  if (document.visibilityState === 'visible') { restoreRestTimer(); restoreMobility(); restoreRun(); }
 });
 
 // iOS erlaubt Ton nur aus einer Nutzer-Geste heraus. Deshalb einmal einen
@@ -2029,6 +2037,479 @@ function restoreMobility() {
   }
 }
 
+// ---------- Laufen: Intervallprogramm ----------
+
+function renderRunning() {
+  const logs = state.runLogs || [];
+  const coach = runCoach(state);
+  const level = runLevelOf(state);
+  const def = runLevelDef(level);
+  const atLevel = runSessionsAtLevel(state);
+  const zones = hrZones(state);
+  const test = lastVo2Test(state);
+  const rating = test ? vo2Rating(test.vo2max, state) : null;
+  const recSecs = runSessionSeconds(coach.type, coach.level, 40);
+
+  const ladder = RUN_LEVELS.map((l) => {
+    const done = l.level < level;
+    const cur = l.level === level;
+    return '<button class="lvl-step' + (cur ? ' current' : done ? ' done' : '') + '" data-runlevel="' + l.level + '">' +
+      '<span class="ls-num">' + (done ? '✓' : l.level) + '</span>' +
+      '<span class="ls-name">' + esc(l.name) + '</span>' +
+      (l.target ? '<span class="ls-target">Ziel</span>' : '') +
+      (cur ? '<span class="ls-prog">' + atLevel + '/' + RUN_LEVEL_SESSIONS + '</span>' : '') +
+    '</button>';
+  }).join('');
+
+  const zoneCard = zones
+    ? '<div class="card"><h2>Deine Pulsbereiche</h2>' +
+      '<div class="focus-row">' +
+        '<div class="focus-tile stale"><div class="ft-name">Intervall</div><div class="ft-age">' + zones.work + '</div></div>' +
+        '<div class="focus-tile fresh"><div class="ft-name">Erholung</div><div class="ft-age">' + zones.recover + '</div></div>' +
+        '<div class="focus-tile fresh"><div class="ft-name">Ruhiger Lauf</div><div class="ft-age">' + zones.easy + '</div></div>' +
+      '</div>' +
+      '<p class="muted small" style="margin-top:10px">Geschätzte maximale Herzfrequenz: <b>' + zones.hrMax + '</b> ' +
+      (state.runHrMax ? '(von dir eingetragen)' : '(Tanaka-Formel nach deinem Alter – über 40 treffsicherer als „220 minus Alter")') +
+      '. Das bleibt eine Schätzung mit rund ±10 Schlägen. Ohne Pulsgurt gilt der Sprechtest: <b>' + esc(RUN_TALK.work) + '</b>.</p>' +
+      '<button class="btn secondary" id="hrMaxBtn">❤️ Maximalpuls selbst eintragen</button></div>'
+    : '<div class="card"><h2>Pulsbereiche</h2>' +
+      '<p class="muted small">Trage im Körper-Tab dein Alter ein, dann rechnet die App deine Pulsbereiche aus. ' +
+      'Auch ohne Pulsuhr geht es gut über den Sprechtest: <b>' + esc(RUN_TALK.work) + '</b>.</p></div>';
+
+  const testCard = test
+    ? '<div class="card"><h2>🫀 Deine VO2max</h2>' +
+      '<div class="stat-row" style="margin-bottom:0">' +
+        '<div class="stat-tile"><div class="val gold">' + fmtW(test.vo2max) + '</div><div class="lbl">ml/kg/min</div></div>' +
+        '<div class="stat-tile"><div class="val">' + (test.distanceM ? (test.distanceM / 1000).toFixed(2).replace('.', ',') : '–') + '</div><div class="lbl">km in 12 Min</div></div>' +
+        '<div class="stat-tile"><div class="val">' + (rating ? esc(rating.text) : '–') + '</div><div class="lbl">Einstufung</div></div>' +
+      '</div>' +
+      '<p class="muted small" style="margin-top:10px">Gemessen am ' + fmtDate(test.date) + ' · ' +
+      'Pro zusätzlichem Punkt von etwa 3,5 ml/kg/min sinkt das statistische Sterberisiko um rund 13–15 %.</p></div>'
+    : '';
+
+  view.innerHTML =
+    '<div class="card hero">' +
+      '<div class="date-line">Ausdauer & VO2max</div>' +
+      '<div class="greeting">Intervall-Laufen 🏃</div>' +
+      '<div class="quote">Ziel ist das norwegische 4×4: vier Minuten hart, drei locker, viermal. Kein Training verbessert die VO2max zuverlässiger – und die ist einer der stärksten bekannten Vorhersagewerte für ein langes Leben.</div>' +
+    '</div>' +
+
+    '<div class="card coach-card ' + coach.tone + '">' +
+      '<div class="cc-label">Dein Lauf-Coach</div>' +
+      '<h2 class="cc-head">' + esc(coach.headline) + '</h2>' +
+      '<p class="cc-advice">' + esc(coach.advice) + '</p>' +
+      '<button class="btn" id="runCoachStart">▶︎ ' +
+        (coach.type === 'easy' ? '🌿 Ruhiger Dauerlauf' : coach.type === 'test' ? '⏱ Cooper-Test' : '🔥 ' + esc(runLevelDef(coach.level).name)) +
+        ' · ' + fmtDuration(recSecs) + '</button>' +
+    '</div>' +
+
+    '<div class="section-label">Dein Weg zum 4×4</div>' +
+    '<div class="card"><div class="lvl-ladder">' + ladder + '</div>' +
+      '<p class="muted small" style="margin-top:10px">Nach ' + RUN_LEVEL_SESSIONS + ' sauberen Einheiten geht es automatisch eine Stufe hoch – ' +
+      'in etwa sechs Wochen bist du beim vollen Protokoll. Du kannst jede Stufe auch selbst antippen.</p></div>' +
+
+    testCard + zoneCard +
+
+    '<div class="section-label">Einheit wählen</div>' +
+    '<button class="mob-card' + (coach.type === 'interval' ? ' recommended' : '') + '" data-run="interval">' +
+      '<div class="mc-head"><span class="mc-icon">🔥</span><span class="mc-name">Intervalle · ' + esc(def.name) + '</span>' +
+      '<span class="mc-dur">' + fmtDuration(runSessionSeconds('interval', level)) + '</span></div>' +
+      '<div class="mc-desc">' + esc(def.note) + ' Dazwischen je 3 Minuten locker, mit Ein- und Auslaufen.</div>' +
+      '<div class="mc-meta">' + runPoints('interval', runSessionSeconds('interval', level)) + ' Punkte' +
+      (coach.type === 'interval' ? ' <span class="mc-rec">· heute empfohlen</span>' : '') + '</div></button>' +
+
+    '<button class="mob-card' + (coach.type === 'easy' ? ' recommended' : '') + '" data-run="easy">' +
+      '<div class="mc-head"><span class="mc-icon">🌿</span><span class="mc-name">Ruhiger Dauerlauf</span>' +
+      '<span class="mc-dur">40 Min</span></div>' +
+      '<div class="mc-desc">Gemütliches Tempo, ganze Sätze sprechen können. Baut die Grundlage, auf der die Intervalle erst wirken.</div>' +
+      '<div class="mc-meta">' + runPoints('easy', runSessionSeconds('easy', 1, 40)) + ' Punkte' +
+      (coach.type === 'easy' ? ' <span class="mc-rec">· heute empfohlen</span>' : '') + '</div></button>' +
+
+    '<button class="mob-card' + (coach.type === 'test' ? ' recommended' : '') + '" data-run="test">' +
+      '<div class="mc-head"><span class="mc-icon">⏱</span><span class="mc-name">Cooper-Test (VO2max)</span>' +
+      '<span class="mc-dur">' + fmtDuration(runSessionSeconds('test')) + '</span></div>' +
+      '<div class="mc-desc">12 Minuten so weit wie möglich. Daraus schätzt die App deine VO2max – deine Standortbestimmung alle 8 Wochen.</div>' +
+      '<div class="mc-meta">' + runPoints('test', runSessionSeconds('test')) + ' Punkte' +
+      (coach.type === 'test' ? ' <span class="mc-rec">· heute empfohlen</span>' : '') + '</div></button>' +
+
+    '<div class="stat-row" style="margin-top:14px">' +
+      '<div class="stat-tile"><div class="val">' + logs.length + '</div><div class="lbl">Läufe</div></div>' +
+      '<div class="stat-tile"><div class="val">' + logs.filter((l) => l.type === 'interval').length + '</div><div class="lbl">Intervalle</div></div>' +
+      '<div class="stat-tile"><div class="val">' + (daysSinceRun(state) == null ? '–' : daysSinceRun(state)) + '</div><div class="lbl">Tage her</div></div>' +
+    '</div>' +
+
+    '<details class="fold"><summary>Warum 4×4 – und warum das fürs Altern zählt</summary><div class="fold-body">' +
+      '<div class="plan-ex"><div>Das Protokoll stammt von Ulrik Wisløffs Arbeitsgruppe an der NTNU Trondheim. In der Originalstudie steigerte es die VO2max um rund <b>46 % stärker</b> als ein gleich langes ruhiges Dauertraining – bei nur 16 Minuten harter Arbeit pro Einheit.</div></div>' +
+      '<div class="plan-ex"><div>Die Ausdauerleistung ist einer der <b>stärksten bekannten Vorhersagewerte für die Gesamtsterblichkeit</b> – stärker als Rauchen, Diabetes oder Bluthochdruck. Pro zusätzlichem MET (etwa 3,5 ml/kg/min) sinkt das Risiko um rund 13–15 %.</div></div>' +
+      '<div class="plan-ex"><div>In der <b>Generation-100-Studie</b> (1567 Personen, 70–77 Jahre, über 5 Jahre) starben in der Intervallgruppe 3 %, im moderaten Arm 6 %. Der Unterschied war statistisch nicht gesichert, zeigt aber die Richtung – und die Intervallgruppe hatte klar die bessere Fitness.</div></div>' +
+      '<div class="plan-ex"><div><b>Aufbau statt Vollgas:</b> Die Literatur empfiehlt 4–6 Wochen Anlauf und zwei Einheiten pro Woche mit mindestens 48 Stunden Abstand. Drei Intervalle in guter Qualität schlagen vier, bei denen das letzte nur noch Quälerei ist.</div></div>' +
+      '<div class="plan-ex"><div><b>Kombination mit deinem Krafttraining:</b> Am besten an trainingsfreien Tagen oder mit ein paar Stunden Abstand. Intervalle nie direkt vor dem Beintraining – und umgekehrt.</div></div>' +
+      '<div class="plan-ex"><div class="px-muscle">Die Pulsbereiche sind Schätzwerte. Wenn du Herz-Kreislauf-Vorerkrankungen hast oder lange nicht intensiv trainiert hast, klär hochintensives Intervalltraining vorher ärztlich ab.</div></div>' +
+    '</div></details>';
+
+  $('#runCoachStart').addEventListener('click', () => startRun(coach.type, coach.level));
+  $$('[data-run]').forEach((b) => b.addEventListener('click', () => startRun(b.dataset.run, level)));
+  $$('[data-runlevel]').forEach((b) => b.addEventListener('click', () => {
+    state.runLevel = +b.dataset.runlevel;
+    saveState(state);
+    renderRunning();
+    toast('🏃 Stufe ' + state.runLevel + ': ' + runLevelDef(state.runLevel).name);
+  }));
+  const hrBtn = $('#hrMaxBtn');
+  if (hrBtn) hrBtn.addEventListener('click', openHrMaxSheet);
+}
+
+function openHrMaxSheet() {
+  showOverlay(
+    '<h2>❤️ Maximalpuls</h2>' +
+    '<p class="muted small">Kennst du deinen echten Maximalpuls (z. B. aus einem Ausbelastungstest oder dem höchsten je gemessenen Wert), trag ihn hier ein – ' +
+    'das ist genauer als jede Formel. Leer lassen heißt: Schätzung nach Alter.</p>' +
+    '<div class="set-row" style="margin-top:12px"><span class="set-num" style="width:80px">Max-Puls</span>' +
+      '<input type="number" inputmode="numeric" id="hrInput" value="' + (state.runHrMax || '') + '" placeholder="z.B. 186"><span class="unit">bpm</span></div>' +
+    '<div class="btn-row">' +
+      '<button class="btn secondary" id="hrClear">Zurücksetzen</button>' +
+      '<button class="btn" id="hrSave">Speichern ✓</button>' +
+    '</div>'
+  );
+  $('#hrClear').addEventListener('click', () => {
+    state.runHrMax = null; saveState(state); hideOverlay(); renderRunning(); toast('❤️ Zurück auf Schätzung');
+  });
+  $('#hrSave').addEventListener('click', () => {
+    const v = parseInt($('#hrInput').value, 10);
+    if (isNaN(v) || v < 120 || v > 220) { alert('Bitte einen Wert zwischen 120 und 220 eintragen.'); return; }
+    state.runHrMax = v; saveState(state); hideOverlay(); renderRunning(); toast('❤️ Maximalpuls: ' + v);
+  });
+}
+
+// ---------- Geführter Lauf-Player (gleiche Wanduhr-Technik wie beim Dehnen) ----------
+
+const RUN_KEY = 'gymcoach.runsession.v1';
+let runSession = null;   // { type, level, minutes, idx, endsAt, paused, leftWhenPaused, startedAt }
+let runInterval = null;
+let runLastTickSec = null;
+
+function runSteps() {
+  return runSessionSteps(runSession.type, runSession.level, runSession.minutes);
+}
+
+function runSave() {
+  if (runSession) localStorage.setItem(RUN_KEY, JSON.stringify(runSession));
+  else localStorage.removeItem(RUN_KEY);
+}
+
+function runLeft() {
+  if (!runSession) return 0;
+  if (runSession.paused) return runSession.leftWhenPaused;
+  return Math.max(0, Math.round((runSession.endsAt - Date.now()) / 1000));
+}
+
+function startRun(type, level, minutes) {
+  stopRestTimer();
+  initAudio();
+  requestWakeLock();
+  const steps = runSessionSteps(type, level, minutes || 40);
+  runSession = {
+    type, level: level || runLevelOf(state), minutes: minutes || 40,
+    idx: 0, endsAt: Date.now() + steps[0].seconds * 1000,
+    paused: false, leftWhenPaused: 0, startedAt: new Date().toISOString(),
+  };
+  runSave();
+  renderRunPlayer();
+  if (runInterval) clearInterval(runInterval);
+  runInterval = setInterval(runTick, 250);
+  runAnnouncePhase();
+}
+
+function runTick() {
+  if (!runSession) { clearInterval(runInterval); runInterval = null; return; }
+  if (runSession.paused) return;
+  const left = runLeft();
+  runDrawTime(left);
+  if (left <= 0) { runAdvance(); return; }
+  if (left <= 3 && left !== runLastTickSec) { runLastTickSec = left; playSound('tick'); }
+}
+
+function runAdvance() {
+  const steps = runSteps();
+  runLastTickSec = null;
+  if (runSession.idx >= steps.length - 1) { playSound('finish'); finishRun(); return; }
+  runSession.idx++;
+  runSession.endsAt = Date.now() + steps[runSession.idx].seconds * 1000;
+  // Ins Intervall hinein deutlich anders klingen als in die Erholung
+  playSound(steps[runSession.idx].kind === 'work' || steps[runSession.idx].kind === 'test' ? 'go' : 'done');
+  runSave();
+  renderRunPlayer();
+  runAnnouncePhase();
+}
+
+function runAnnouncePhase() {
+  const steps = runSteps();
+  const st = steps[runSession.idx];
+  const texte = {
+    warmup: 'Einlaufen. Ruhiges Tempo.',
+    work: st.label + '. Vollgas!',
+    recover: 'Erholung. Locker weiterlaufen.',
+    easy: 'Ruhiger Dauerlauf. Du solltest ganze Sätze sprechen können.',
+    test: 'Zwölf Minuten Test. Gleichmäßig schnell.',
+    cooldown: 'Auslaufen. Gut gemacht.',
+  };
+  say(texte[st.kind] || st.label);
+}
+
+function runJump(delta) {
+  const steps = runSteps();
+  const next = runSession.idx + delta;
+  if (next < 0) return;
+  if (next >= steps.length) { finishRun(); return; }
+  runSession.idx = next;
+  runSession.paused = false;
+  runLastTickSec = null;
+  runSession.endsAt = Date.now() + steps[next].seconds * 1000;
+  runSave();
+  renderRunPlayer();
+  runAnnouncePhase();
+}
+
+function runTogglePause() {
+  if (runSession.paused) {
+    runSession.paused = false;
+    runSession.endsAt = Date.now() + runSession.leftWhenPaused * 1000;
+  } else {
+    runSession.leftWhenPaused = runLeft();
+    runSession.paused = true;
+  }
+  runSave();
+  renderRunPlayer();
+}
+
+function closeRunPlayer() {
+  if (runInterval) clearInterval(runInterval);
+  runInterval = null;
+  releaseWakeLock();
+  const el = $('#runPlayer');
+  if (el) el.remove();
+}
+
+function runQuit() {
+  if (!confirm('Lauf beenden? Diese Einheit wird nicht gespeichert.')) return;
+  closeRunPlayer();
+  runSession = null;
+  runSave();
+  render();
+}
+
+function runDrawTime(left) {
+  const t = $('#runTime'), ring = $('#runRing');
+  if (!t || !runSession) return;
+  const st = runSteps()[runSession.idx];
+  t.textContent = fmtTime(left);
+  if (ring) ring.style.strokeDashoffset = String(MOB_C * Math.min(1, Math.max(0, 1 - left / st.seconds)));
+}
+
+function renderRunPlayer() {
+  if (!runSession) return;
+  const steps = runSteps();
+  const st = steps[runSession.idx];
+  const info = RUN_PHASE_INFO[st.kind];
+  const zones = hrZones(state);
+  const next = steps[runSession.idx + 1];
+
+  let restSec = runLeft();
+  for (let i = runSession.idx + 1; i < steps.length; i++) restSec += steps[i].seconds;
+
+  const zoneLine = zones
+    ? '<div class="rp-zone">🫀 ' + zones[info.zone] + ' Schläge/Min</div>'
+    : '';
+
+  let el = $('#runPlayer');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'runPlayer';
+    el.className = 'mob-player run-player';
+    document.body.appendChild(el);
+  }
+
+  el.innerHTML =
+    '<div class="mp-top">' +
+      '<button id="runQuitBtn" class="mp-quit" aria-label="Beenden">✕</button>' +
+      '<div class="mp-count">Abschnitt ' + (runSession.idx + 1) + ' / ' + steps.length + '</div>' +
+      '<button id="runSoundBtn" class="mp-quit" aria-label="Ton umschalten">' + soundIcon() + '</button>' +
+    '</div>' +
+    '<div class="mp-bar"><div style="width:' + Math.round((runSession.idx / steps.length) * 100) + '%"></div></div>' +
+
+    '<div class="mp-scroll">' +
+      '<div class="rp-phase ' + info.color + '">' +
+        '<div class="rp-icon">' + info.icon + '</div>' +
+        '<h2 class="mp-name">' + esc(st.label) + '</h2>' +
+      '</div>' +
+
+      '<div class="mp-ringwrap ' + (runSession.paused ? 'paused' : info.color === 'work' ? 'prep' : '') + '">' +
+        '<svg viewBox="0 0 180 180">' +
+          '<circle cx="90" cy="90" r="' + MOB_R + '" fill="none" stroke="#2a3242" stroke-width="9"/>' +
+          '<circle id="runRing" cx="90" cy="90" r="' + MOB_R + '" fill="none" stroke-width="9" stroke-linecap="round" ' +
+            'stroke-dasharray="' + MOB_C + '" stroke-dashoffset="0" transform="rotate(-90 90 90)"/>' +
+        '</svg>' +
+        '<div class="mp-timebox"><div class="mp-phase">' +
+          (runSession.paused ? 'Pausiert' : info.color === 'work' ? 'Hart' : 'Locker') +
+        '</div><div class="mp-time" id="runTime">–</div></div>' +
+      '</div>' +
+
+      zoneLine +
+      '<div class="mp-why">' + info.icon + ' ' + esc(info.hint) + '</div>' +
+      '<div class="rp-talk">🗣 ' + esc(RUN_TALK[info.zone]) + '</div>' +
+      '<div class="mp-next">Als Nächstes: ' + (next ? esc(next.label) : 'Fertig!') + '</div>' +
+      '<div class="mp-remain">Noch ca. ' + fmtDuration(restSec) + '</div>' +
+    '</div>' +
+
+    '<div class="mp-controls">' +
+      '<button id="runPrev" class="mp-btn"' + (runSession.idx === 0 ? ' disabled' : '') + '>↩︎</button>' +
+      '<button id="runPause" class="mp-btn wide">' + (runSession.paused ? '▶︎ Weiter' : '⏸ Pause') + '</button>' +
+      '<button id="runNext" class="mp-btn">↪︎</button>' +
+    '</div>';
+
+  runDrawTime(runLeft());
+  $('#runQuitBtn').addEventListener('click', runQuit);
+  $('#runSoundBtn').addEventListener('click', () => { cycleSoundMode(); $('#runSoundBtn').textContent = soundIcon(); });
+  $('#runPause').addEventListener('click', runTogglePause);
+  $('#runPrev').addEventListener('click', () => runJump(-1));
+  $('#runNext').addEventListener('click', () => runJump(1));
+}
+
+function finishRun() {
+  const type = runSession.type, level = runSession.level;
+  const seconds = runSteps().reduce((s, x) => s + x.seconds, 0);
+  const startedAt = runSession.startedAt;
+  closeRunPlayer();
+  runSession = null;
+  runSave();
+
+  if (type === 'test') return askCooperDistance(seconds, startedAt);
+  if (type === 'interval') return askIntervalFeedback(level, seconds, startedAt);
+  saveRunLog({ type, level, seconds, startedAt });
+}
+
+function saveRunLog(o) {
+  if (!state.runLogs) state.runLogs = [];
+  const pts = runPoints(o.type, o.seconds);
+  const log = {
+    id: 'run_' + Date.now(), date: new Date().toISOString(),
+    type: o.type, level: o.level, seconds: o.seconds, points: pts,
+    feedback: o.feedback || null, distanceM: o.distanceM || null, vo2max: o.vo2max || null,
+    durationMin: Math.max(1, Math.round((Date.now() - new Date(o.startedAt).getTime()) / 60000)),
+  };
+  state.runLogs.push(log);
+  state.points += pts;
+
+  // Stufenaufstieg nach genug sauberen Einheiten
+  let levelUp = null;
+  if (o.type === 'interval' && o.feedback !== 'hard') {
+    const lvl = runLevelOf(state);
+    if (runSessionsAtLevel(state) >= RUN_LEVEL_SESSIONS && lvl < RUN_LEVELS.length) {
+      state.runLevel = lvl + 1;
+      levelUp = runLevelDef(state.runLevel);
+    }
+  }
+  const newBadges = checkBadges(state);
+  saveState(state);
+
+  const badgesHtml = newBadges.map((b) =>
+    '<div class="new-badge"><span class="b-icon">' + b.icon + '</span><div><div class="b-name">Neues Abzeichen: ' + esc(b.name) + '</div>' +
+    '<div class="b-desc">' + esc(b.desc) + '</div></div></div>').join('');
+
+  const title = o.type === 'test' ? '⏱ Cooper-Test geschafft!'
+    : o.type === 'easy' ? '🌿 Dauerlauf erledigt!'
+    : '🔥 ' + runLevelDef(o.level).name + ' geschafft!';
+
+  showOverlay(
+    '<h2>' + title + '</h2>' +
+    '<div class="summary-quote">' + esc(pickQuote(RUN_QUOTES)) + '</div>' +
+    (o.vo2max
+      ? '<div class="summary-total"><div class="st-num">' + fmtW(o.vo2max) + '</div><div class="st-lbl">ml/kg/min VO2max</div></div>' +
+        '<p class="muted small">' + (o.distanceM / 1000).toFixed(2).replace('.', ',') + ' km in 12 Minuten' +
+        (vo2Rating(o.vo2max, state) ? ' · Einstufung: ' + esc(vo2Rating(o.vo2max, state).text) : '') + '</p>'
+      : '<div class="summary-total"><div class="st-num" id="stNum">0</div><div class="st-lbl">Punkte verdient</div></div>') +
+    (levelUp
+      ? '<div class="levelup-banner"><span class="lu-icon">🚀</span><div><div class="lu-title">Stufe geschafft!</div>' +
+        '<div class="lu-sub">Nächste Einheit: ' + esc(levelUp.name) + '</div></div></div>'
+      : '') +
+    '<div class="muted small" style="margin-top:10px">' + log.durationMin + ' Min unterwegs · +' + pts + ' Punkte · ' +
+      state.runLogs.length + '. Lauf insgesamt</div>' +
+    badgesHtml +
+    '<button class="btn" id="closeRunSummary">Fertig 💪</button>'
+  );
+  if (!o.vo2max) setTimeout(() => animateCount($('#stNum'), pts, ''), 250);
+  say(levelUp ? 'Geschafft! Stufe aufgestiegen.' : 'Geschafft!');
+  confetti(levelUp || newBadges.length ? 130 : 85);
+  $('#closeRunSummary').addEventListener('click', () => { hideOverlay(); switchTab('running'); applyPendingReloadIfSafe(); });
+}
+
+function askIntervalFeedback(level, seconds, startedAt) {
+  showOverlay(
+    '<h2>🔥 ' + esc(runLevelDef(level).name) + ' geschafft!</h2>' +
+    '<p class="muted small">Wie haben sich die Intervalle angefühlt? Davon hängt ab, wann es eine Stufe hochgeht.</p>' +
+    '<div class="variant-list">' +
+      '<button class="variant-opt" data-fb="easy"><div class="vo-name">😀 Gut machbar</div>' +
+        '<div class="vo-desc">Alle Intervalle sauber durchgezogen, danach noch Luft</div></button>' +
+      '<button class="variant-opt" data-fb="ok"><div class="vo-name">😤 Passend fordernd</div>' +
+        '<div class="vo-desc">Hart, aber alle Intervalle in guter Qualität – genau richtig</div></button>' +
+      '<button class="variant-opt" data-fb="hard"><div class="vo-name">🥵 Zu hart</div>' +
+        '<div class="vo-desc">Das Tempo brach ein oder ich musste abbrechen – Stufe bleibt</div></button>' +
+    '</div>'
+  );
+  $$('[data-fb]').forEach((b) => b.addEventListener('click', () => {
+    hideOverlay();
+    saveRunLog({ type: 'interval', level, seconds, startedAt, feedback: b.dataset.fb });
+  }));
+}
+
+function askCooperDistance(seconds, startedAt) {
+  showOverlay(
+    '<h2>⏱ Wie weit bist du gekommen?</h2>' +
+    '<p class="muted small">Die in den 12 Minuten zurückgelegte Strecke – ablesbar auf Laufuhr, Handy-App oder an der Bahn ' +
+    '(eine Runde = 400 m). Daraus schätzt die App deine VO2max.</p>' +
+    '<div class="set-row" style="margin-top:12px"><span class="set-num" style="width:70px">Strecke</span>' +
+      '<input type="number" inputmode="decimal" step="10" id="cooperM" placeholder="z.B. 2400"><span class="unit">m</span></div>' +
+    '<div class="btn-row">' +
+      '<button class="btn secondary" id="cooperSkip">Ohne Wert</button>' +
+      '<button class="btn" id="cooperSave">Auswerten ✓</button>' +
+    '</div>'
+  );
+  $('#cooperSkip').addEventListener('click', () => {
+    hideOverlay(); saveRunLog({ type: 'test', seconds, startedAt });
+  });
+  $('#cooperSave').addEventListener('click', () => {
+    const m = parseInt(($('#cooperM').value || '').replace(',', '.'), 10);
+    if (isNaN(m) || m < 500 || m > 6000) { alert('Bitte eine Strecke zwischen 500 und 6000 Metern eintragen.'); return; }
+    hideOverlay();
+    saveRunLog({ type: 'test', seconds, startedAt, distanceM: m, vo2max: cooperVo2max(m) });
+  });
+}
+
+function restoreRun() {
+  if (runSession) return;
+  try {
+    const saved = JSON.parse(localStorage.getItem(RUN_KEY));
+    if (!saved || typeof saved.idx !== 'number' || !saved.type) { localStorage.removeItem(RUN_KEY); return; }
+    const steps = runSessionSteps(saved.type, saved.level, saved.minutes);
+    if (saved.idx < 0 || saved.idx >= steps.length) { localStorage.removeItem(RUN_KEY); return; }
+    if (!saved.paused && Date.now() - saved.endsAt > 45 * 60000) { localStorage.removeItem(RUN_KEY); return; }
+    runSession = saved;
+    // Bildschirm war lange aus: am aktuellen Abschnitt anhalten statt durchzurasen
+    if (!runSession.paused && runLeft() <= 0) {
+      runSession.paused = true;
+      runSession.leftWhenPaused = steps[runSession.idx].seconds;
+      runSave();
+    }
+    initAudio();
+    requestWakeLock();
+    renderRunPlayer();
+    if (runInterval) clearInterval(runInterval);
+    runInterval = setInterval(runTick, 250);
+  } catch (e) {
+    localStorage.removeItem(RUN_KEY);
+  }
+}
+
 // ---------- Plan-Ansicht ----------
 
 function renderPlanView() {
@@ -2118,3 +2599,4 @@ if ('serviceWorker' in navigator) {
 render();
 restoreRestTimer();
 restoreMobility();
+restoreRun();

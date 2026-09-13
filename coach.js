@@ -354,6 +354,10 @@ const BADGES = [
   { id: 'mobility_1', name: 'Erste Dehneinheit', icon: '🧘', desc: 'Zum ersten Mal ein Mobility-Programm durchgezogen' },
   { id: 'mobility_10', name: 'Beweglich', icon: '🤸', desc: '10 Dehneinheiten absolviert' },
   { id: 'mobility_25', name: 'Geschmeidig', icon: '🌊', desc: '25 Dehneinheiten – Beweglichkeit ist Gewohnheit geworden' },
+  { id: 'run_1', name: 'Erster Lauf', icon: '🏃', desc: 'Erste Laufeinheit absolviert' },
+  { id: 'run_10', name: 'Lauf-Routine', icon: '👟', desc: '10 Laufeinheiten absolviert' },
+  { id: 'run_4x4', name: 'Norwegisches 4×4', icon: '🇳🇴', desc: 'Das volle 4×4-Protokoll erreicht' },
+  { id: 'vo2_test', name: 'Standortbestimmung', icon: '🫀', desc: 'VO2max per Cooper-Test gemessen' },
 ];
 
 function checkBadges(state) {
@@ -399,6 +403,12 @@ function checkBadges(state) {
   if (mob >= 1) grant('mobility_1');
   if (mob >= 10) grant('mobility_10');
   if (mob >= 25) grant('mobility_25');
+
+  const runs = state.runLogs || [];
+  if (runs.length >= 1) grant('run_1');
+  if (runs.length >= 10) grant('run_10');
+  if (runs.some((r) => r.type === 'interval' && r.level >= 6)) grant('run_4x4');
+  if (runs.some((r) => r.type === 'test' && r.vo2max)) grant('vo2_test');
 
   return earned;
 }
