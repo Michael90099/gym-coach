@@ -221,6 +221,16 @@ function renderHome() {
       '<button class="btn" id="startBtn">▶︎ ' + esc(getWorkout(selectedWorkoutKey).name) + ' starten</button>' +
     '</div>' +
 
+    (ouraGuidance(state)
+      ? '<div class="card oura-card band-' + ouraGuidance(state).band.key + '">' +
+        '<div class="cc-label">Oura heute</div>' +
+        '<h2 class="cc-head">' + esc(ouraGuidance(state).headline) + '</h2>' +
+        '<p class="cc-advice">' + esc(ouraGuidance(state).advice) + '</p></div>'
+      : ouraDue(state)
+        ? '<div class="card oura-card"><h2>💍 Oura-Morgencheck</h2>' +
+          '<p class="muted small">Heute noch nichts eingetragen. Mit deiner Bereitschaft passt der Coach das Training an.</p>' +
+          '<button class="btn secondary" id="ouraOpenBtn">Werte eintragen</button></div>'
+        : '') +
     (checkinDue(state)
       ? '<div class="card checkin-hint"><h2>⚖️ Wochen-Check-in fällig</h2>' +
         '<p class="muted small">Einmal pro Woche wiegen hält dein Rekomp-Coaching scharf. Dauert 20 Sekunden, bringt ' + POINTS_CHECKIN + ' Punkte.</p>' +
@@ -260,6 +270,7 @@ function renderHome() {
   if (mbBtn) mbBtn.addEventListener('click', () => switchTab('mobility'));
   const rnBtn = $('#homeRunBtn');
   if (rnBtn) rnBtn.addEventListener('click', () => switchTab('running'));
+  wireOuraCard();
 }
 
 // ---------- Workout-Session ----------
@@ -1517,11 +1528,27 @@ function renderBody() {
       ).join('') + '</div>'
     : '';
 
+  // HRV und Ruhepuls sind starke Langlebigkeits-Marker – hier gehören sie hin
+  const oe = ouraEntries(state);
+  const hrvPts = oe.filter((e) => e.hrv != null).map((e) => ({ date: e.date, v: e.hrv }));
+  const rhrPts = oe.filter((e) => e.restingHr != null).map((e) => ({ date: e.date, v: e.restingHr }));
+  const hrvTrend = ouraTrend(state, 'hrv'), rhrTrend = ouraTrend(state, 'restingHr');
+  const ouraCharts =
+    (hrvPts.length >= 2 ? '<div class="card"><h2>💗 HRV (ms)' +
+      (hrvTrend ? ' · ' + (hrvTrend.diff >= 0 ? '+' : '') + fmtW(hrvTrend.diff) + ' zum Vormonat' : '') + '</h2>' +
+      miniLineChart(hrvPts, 'ms') +
+      '<p class="muted small" style="margin-top:6px">Steigende Herzratenvariabilität heißt meist: bessere Erholung und wachsende Fitness.</p></div>' : '') +
+    (rhrPts.length >= 2 ? '<div class="card"><h2>🫀 Ruhepuls (bpm)' +
+      (rhrTrend ? ' · ' + (rhrTrend.diff >= 0 ? '+' : '') + fmtW(rhrTrend.diff) : '') + '</h2>' +
+      miniLineChart(rhrPts, 'bpm') +
+      '<p class="muted small" style="margin-top:6px">Ein sinkender Ruhepuls ist eines der deutlichsten Zeichen, dass dein Ausdauertraining wirkt.</p></div>' : '');
+
   view.innerHTML =
-    status + goals + charts + timeline +
+    ouraCardHtml() + status + goals + charts + ouraCharts + timeline +
     '<button class="btn" id="checkinBtn">⚖️ Check-in eintragen (+' + POINTS_CHECKIN + ' P)</button>' +
     '<button class="btn secondary" id="profileBtn" style="margin-top:10px">⚙ Profil (Größe, Alter, Aktivität)</button>';
 
+  wireOuraCard();
   $('#checkinBtn').addEventListener('click', () => openCheckinSheet());
   $('#profileBtn').addEventListener('click', openProfileSheet);
 }
@@ -2037,6 +2064,88 @@ function restoreMobility() {
   }
 }
 
+// ---------- Oura: Morgencheck ----------
+
+function openOuraSheet() {
+  const last = latestOura(state);
+  const rows = OURA_FIELDS.map((f) =>
+    '<div class="set-row"><span class="set-num" style="width:96px">' + esc(f.label) + '</span>' +
+      '<input type="number" inputmode="numeric" data-oura="' + f.key + '" ' +
+      'value="' + (last && last[f.key] != null ? last[f.key] : '') + '" placeholder="' + (f.required ? 'nötig' : 'optional') + '">' +
+      '<span class="unit">' + f.unit + '</span></div>' +
+    '<div class="oura-hint">' + esc(f.hint) + '</div>'
+  ).join('');
+
+  showOverlay(
+    '<h2>💍 Oura-Morgencheck</h2>' +
+    '<p class="muted small">Die Werte aus deiner Oura-App abtippen – zwanzig Sekunden. Danach steuert deine Bereitschaft, ' +
+    'wie hart heute trainiert wird. Alles bleibt auf diesem Gerät.</p>' +
+    '<div style="margin-top:12px">' + rows + '</div>' +
+    '<div class="btn-row">' +
+      '<button class="btn secondary" id="ouraCancel">Abbrechen</button>' +
+      '<button class="btn" id="ouraSave">Speichern ✓</button>' +
+    '</div>'
+  );
+  $('#ouraCancel').addEventListener('click', hideOverlay);
+  $('#ouraSave').addEventListener('click', () => {
+    const entry = { date: new Date().toISOString() };
+    for (const f of OURA_FIELDS) {
+      const raw = ($('[data-oura="' + f.key + '"]').value || '').trim();
+      if (raw === '') { entry[f.key] = null; continue; }
+      const v = parseFloat(raw.replace(',', '.'));
+      if (isNaN(v) || v < f.min || v > f.max) {
+        alert(f.label + ': bitte einen Wert zwischen ' + f.min + ' und ' + f.max + ' eintragen.');
+        entry.invalid = true; return;
+      }
+      entry[f.key] = Math.round(v * 10) / 10;
+    }
+    if (entry.readiness == null) { alert('Die Bereitschaft brauche ich mindestens.'); return; }
+
+    if (!state.oura) state.oura = { entries: [] };
+    // Pro Tag nur ein Eintrag – ein zweiter ersetzt den ersten
+    const heute = new Date().toDateString();
+    state.oura.entries = state.oura.entries.filter((e) => new Date(e.date).toDateString() !== heute);
+    state.oura.entries.push(entry);
+    const neu = ouraEntries(state).length === 1 || !ouraToday(state);
+    state.points += OURA_POINTS;
+    saveState(state);
+    hideOverlay();
+    render();
+    const band = readinessBand(entry.readiness);
+    toast(band.icon + ' Bereitschaft ' + entry.readiness + ' · +' + OURA_POINTS + ' P');
+    say('Bereitschaft ' + entry.readiness + '. ' + band.label);
+  });
+}
+
+function ouraCardHtml() {
+  const g = ouraGuidance(state);
+  if (!g) {
+    const last = latestOura(state);
+    return '<div class="card oura-card"><h2>💍 Oura-Morgencheck</h2>' +
+      '<p class="muted small">' + (last
+        ? 'Der letzte Eintrag ist von ' + fmtDate(last.date) + '. Für die Steuerung von heute brauche ich die Werte von heute Früh.'
+        : 'Trag deine Bereitschaft aus der Oura-App ein – dann passt der Coach das Training daran an.') + '</p>' +
+      '<button class="btn secondary" id="ouraOpenBtn">💍 Werte eintragen</button></div>';
+  }
+  const extras = [
+    g.sleep != null ? 'Schlaf ' + g.sleep : null,
+    g.hrv != null ? 'HRV ' + fmtW(g.hrv) + ' ms' : null,
+    g.restingHr != null ? 'Ruhepuls ' + fmtW(g.restingHr) : null,
+  ].filter(Boolean).map((t) => '<span class="chip">' + esc(t) + '</span>').join(' ');
+
+  return '<div class="card oura-card band-' + g.band.key + '">' +
+    '<div class="cc-label">Oura heute</div>' +
+    '<h2 class="cc-head">' + esc(g.headline) + '</h2>' +
+    '<p class="cc-advice">' + esc(g.advice) + '</p>' +
+    (extras ? '<div class="status-facts">' + extras + '</div>' : '') +
+    '<button class="btn secondary" id="ouraOpenBtn">Werte ändern</button></div>';
+}
+
+function wireOuraCard() {
+  const b = $('#ouraOpenBtn');
+  if (b) b.addEventListener('click', openOuraSheet);
+}
+
 // ---------- Laufen: Intervallprogramm ----------
 
 function renderRunning() {
@@ -2094,6 +2203,7 @@ function renderRunning() {
       '<div class="quote">Ziel ist das norwegische 4×4: vier Minuten hart, drei locker, viermal. Kein Training verbessert die VO2max zuverlässiger – und die ist einer der stärksten bekannten Vorhersagewerte für ein langes Leben.</div>' +
     '</div>' +
 
+    ouraCardHtml() +
     '<div class="card coach-card ' + coach.tone + '">' +
       '<div class="cc-label">Dein Lauf-Coach</div>' +
       '<h2 class="cc-head">' + esc(coach.headline) + '</h2>' +
@@ -2147,6 +2257,7 @@ function renderRunning() {
       '<div class="plan-ex"><div class="px-muscle">Die Pulsbereiche sind Schätzwerte. Wenn du Herz-Kreislauf-Vorerkrankungen hast oder lange nicht intensiv trainiert hast, klär hochintensives Intervalltraining vorher ärztlich ab.</div></div>' +
     '</div></details>';
 
+  wireOuraCard();
   $('#runCoachStart').addEventListener('click', () => startRun(coach.type, coach.level));
   $$('[data-run]').forEach((b) => b.addEventListener('click', () => startRun(b.dataset.run, level)));
   $$('[data-runlevel]').forEach((b) => b.addEventListener('click', () => {
@@ -2183,6 +2294,63 @@ function openHrMaxSheet() {
 
 // ---------- Geführter Lauf-Player (gleiche Wanduhr-Technik wie beim Dehnen) ----------
 
+// ---------- Brustgurt (Web Bluetooth) ----------
+let hrDevice = null, hrChar = null, hrCurrent = null;
+let hrSamples = [];   // für Durchschnitt und Maximum der Einheit
+
+async function connectHeartStrap() {
+  if (!bluetoothSupported()) {
+    alert('Dieser Browser unterstützt keine Bluetooth-Verbindung zu Webseiten. '
+      + 'Am iPhone geht das in Safari grundsätzlich nicht – nur über Spezialbrowser wie Bluefy. '
+      + 'In Chrome am Rechner oder unter Android funktioniert es direkt. '
+      + 'Alternative: Trag Durchschnitts- und Maximalpuls nach dem Lauf von Hand ein.');
+    return;
+  }
+  try {
+    const dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [HR_SERVICE] }] });
+    const server = await dev.gatt.connect();
+    const service = await server.getPrimaryService(HR_SERVICE);
+    const ch = await service.getCharacteristic(HR_CHARACTERISTIC);
+    await ch.startNotifications();
+    ch.addEventListener('characteristicvaluechanged', (e) => {
+      hrCurrent = parseHeartRate(e.target.value);
+      if (hrCurrent > 0) hrSamples.push(hrCurrent);
+      drawHeartRate();
+    });
+    dev.addEventListener('gattserverdisconnected', () => {
+      hrChar = null; hrCurrent = null; drawHeartRate();
+      toast('❤️ Brustgurt getrennt');
+    });
+    hrDevice = dev; hrChar = ch;
+    toast('❤️ ' + (dev.name || 'Brustgurt') + ' verbunden');
+    drawHeartRate();
+  } catch (e) {
+    if (e && e.name !== 'NotFoundError') alert('Verbindung fehlgeschlagen: ' + (e.message || e.name));
+  }
+}
+
+function disconnectHeartStrap() {
+  try { if (hrDevice && hrDevice.gatt.connected) hrDevice.gatt.disconnect(); } catch (e) {}
+  hrDevice = null; hrChar = null; hrCurrent = null;
+}
+
+// Live-Puls einfärben: liegt er im Zielbereich der aktuellen Phase?
+function drawHeartRate() {
+  const el = $('#hrLive');
+  if (!el) return;
+  if (hrCurrent == null) { el.className = 'hr-live off'; el.innerHTML = '❤️ Brustgurt verbinden'; return; }
+  const zones = hrZones(state);
+  let cls = 'hr-live';
+  if (zones && runSession) {
+    const kind = runSteps()[runSession.idx].kind;
+    const zone = RUN_PHASE_INFO[kind].zone;
+    const [lo, hi] = zones[zone].split('–').map(Number);
+    cls += hrCurrent >= lo && hrCurrent <= hi ? ' in' : hrCurrent > hi ? ' over' : ' under';
+  }
+  el.className = cls;
+  el.innerHTML = '❤️ <b>' + hrCurrent + '</b> bpm';
+}
+
 const RUN_KEY = 'gymcoach.runsession.v1';
 let runSession = null;   // { type, level, minutes, idx, endsAt, paused, leftWhenPaused, startedAt }
 let runInterval = null;
@@ -2213,6 +2381,7 @@ function startRun(type, level, minutes) {
     idx: 0, endsAt: Date.now() + steps[0].seconds * 1000,
     paused: false, leftWhenPaused: 0, startedAt: new Date().toISOString(),
   };
+  hrSamples = [];
   runSave();
   renderRunPlayer();
   if (runInterval) clearInterval(runInterval);
@@ -2285,6 +2454,7 @@ function runTogglePause() {
 function closeRunPlayer() {
   if (runInterval) clearInterval(runInterval);
   runInterval = null;
+  disconnectHeartStrap();
   releaseWakeLock();
   const el = $('#runPlayer');
   if (el) el.remove();
@@ -2355,6 +2525,7 @@ function renderRunPlayer() {
       '</div>' +
 
       zoneLine +
+      '<button id="hrLive" class="hr-live off">❤️ Brustgurt verbinden</button>' +
       '<div class="mp-why">' + info.icon + ' ' + esc(info.hint) + '</div>' +
       '<div class="rp-talk">🗣 ' + esc(RUN_TALK[info.zone]) + '</div>' +
       '<div class="mp-next">Als Nächstes: ' + (next ? esc(next.label) : 'Fertig!') + '</div>' +
@@ -2370,6 +2541,8 @@ function renderRunPlayer() {
   runDrawTime(runLeft());
   $('#runQuitBtn').addEventListener('click', runQuit);
   $('#runSoundBtn').addEventListener('click', () => { cycleSoundMode(); $('#runSoundBtn').textContent = soundIcon(); });
+  $('#hrLive').addEventListener('click', () => { if (!hrChar) connectHeartStrap(); });
+  drawHeartRate();
   $('#runPause').addEventListener('click', runTogglePause);
   $('#runPrev').addEventListener('click', () => runJump(-1));
   $('#runNext').addEventListener('click', () => runJump(1));
@@ -2390,11 +2563,17 @@ function finishRun() {
 
 function saveRunLog(o) {
   if (!state.runLogs) state.runLogs = [];
+  if (hrSamples.length) {
+    o.hrAvg = Math.round(hrSamples.reduce((a, b) => a + b, 0) / hrSamples.length);
+    o.hrMax = Math.max.apply(null, hrSamples);
+    hrSamples = [];
+  }
   const pts = runPoints(o.type, o.seconds);
   const log = {
     id: 'run_' + Date.now(), date: new Date().toISOString(),
     type: o.type, level: o.level, seconds: o.seconds, points: pts,
     feedback: o.feedback || null, distanceM: o.distanceM || null, vo2max: o.vo2max || null,
+    hrAvg: o.hrAvg || null, hrMax: o.hrMax || null,
     durationMin: Math.max(1, Math.round((Date.now() - new Date(o.startedAt).getTime()) / 60000)),
   };
   state.runLogs.push(log);
@@ -2433,7 +2612,8 @@ function saveRunLog(o) {
         '<div class="lu-sub">Nächste Einheit: ' + esc(levelUp.name) + '</div></div></div>'
       : '') +
     '<div class="muted small" style="margin-top:10px">' + log.durationMin + ' Min unterwegs · +' + pts + ' Punkte · ' +
-      state.runLogs.length + '. Lauf insgesamt</div>' +
+      state.runLogs.length + '. Lauf insgesamt' +
+      (log.hrAvg ? ' · ❤️ ø ' + log.hrAvg + ' / max ' + log.hrMax + ' bpm' : '') + '</div>' +
     badgesHtml +
     '<button class="btn" id="closeRunSummary">Fertig 💪</button>'
   );

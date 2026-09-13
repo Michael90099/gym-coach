@@ -561,6 +561,29 @@ table.data-table td:first-child { color: var(--text); }
   font-size: 12.5px; color: var(--text2); background: var(--surface2);
   border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; margin-bottom: 10px;
 }
+/* Oura-Morgencheck */
+.oura-card { border-color: rgba(126, 130, 255, 0.4); }
+.oura-card .cc-label { color: #9aa0ff; }
+.oura-card.band-optimal, .oura-card.band-good { border-color: rgba(77, 212, 172, 0.5); }
+.oura-card.band-optimal .cc-label, .oura-card.band-good .cc-label { color: var(--accent2); }
+.oura-card.band-watch { border-color: rgba(255, 209, 102, 0.5); }
+.oura-card.band-watch .cc-label { color: var(--gold); }
+.oura-card.band-low { border-color: rgba(255, 107, 107, 0.55); }
+.oura-card.band-low .cc-label { color: var(--danger); }
+.oura-hint { font-size: 11.5px; color: var(--muted); margin: -4px 0 10px 104px; }
+
+/* Live-Puls vom Brustgurt */
+.hr-live {
+  display: block; width: 100%; text-align: center; margin-bottom: 10px;
+  padding: 11px; border-radius: 11px; font-size: 17px; font-weight: 800;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text2);
+  font-variant-numeric: tabular-nums;
+}
+.hr-live.off { font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.hr-live.in { background: rgba(77, 212, 172, 0.14); border-color: var(--accent2); color: var(--accent2); }
+.hr-live.under { background: rgba(255, 209, 102, 0.12); border-color: var(--gold); color: var(--gold); }
+.hr-live.over { background: rgba(255, 107, 107, 0.14); border-color: var(--danger); color: var(--danger); }
+
 .running-hint { border-color: rgba(255, 166, 87, 0.45); }
 .running-hint h2 { color: var(--accent); }
 

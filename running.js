@@ -171,6 +171,16 @@ function runCoach(state) {
   const sinceAny = daysSinceRun(state);
   const test = lastVo2Test(state);
 
+  // Die Bereitschaft aus dem Oura-Ring hat Vorrang vor dem Plan
+  const g = typeof ouraGuidance === 'function' ? ouraGuidance(state) : null;
+  if (g && !g.allowHard) {
+    return {
+      type: 'easy', level, tone: 'warn', fromOura: true,
+      headline: g.band.icon + ' Bereitschaft ' + g.score + ' – heute locker',
+      advice: g.advice + ' Intervalle bringen bei schlechter Erholung nicht nur weniger, sie kosten dich auch die nächsten Tage.',
+    };
+  }
+
   if (!logs.length) {
     return {
       type: 'interval', level, tone: 'neutral',
@@ -245,6 +255,24 @@ function runningDue(state) {
   const logs = state.runLogs || [];
   if (!logs.length) return (state.logs || []).length >= 3;
   return daysSinceRun(state) >= 6;
+}
+
+// ---------- Brustgurt über Web Bluetooth ----------
+// Standard-Profil "Heart Rate Service" (0x180D). Funktioniert in Chrome, Edge und
+// auf Android – Safari unterstützt Web Bluetooth bis heute nicht, auf dem iPhone
+// also nur über Spezialbrowser wie Bluefy.
+
+const HR_SERVICE = 0x180d;
+const HR_CHARACTERISTIC = 0x2a37;
+
+function bluetoothSupported() {
+  return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+}
+
+// Das Messformat erlaubt 8 oder 16 Bit – Bit 0 des Flag-Bytes sagt welches
+function parseHeartRate(dataView) {
+  const flags = dataView.getUint8(0);
+  return (flags & 0x01) ? dataView.getUint16(1, true) : dataView.getUint8(1);
 }
 
 const RUN_QUOTES = [

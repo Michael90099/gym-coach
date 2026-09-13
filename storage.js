@@ -18,6 +18,7 @@ function defaultState() {
     runLogs: [],         // absolvierte Laufeinheiten
     runLevel: 1,         // Intervall-Stufe 1–6 (Ziel: 4×4)
     runHrMax: null,      // selbst gemessene maximale Herzfrequenz, sonst Schätzung
+    oura: { entries: [] },  // Morgencheck: Bereitschaft, Schlaf, HRV, Ruhepuls
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)
     restOffset: 10,      // Sekunden Bedien-Ausgleich, um die der Pausen-Timer verkürzt startet
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen
@@ -34,6 +35,7 @@ function loadState() {
     const state = Object.assign(defaultState(), JSON.parse(raw));
     // Ältere Speicherstände kennen die Körperdaten noch nicht
     state.body = Object.assign(defaultState().body, state.body || {});
+    state.oura = Object.assign(defaultState().oura, state.oura || {});
     return state;
   } catch (e) {
     console.error('Konnte Daten nicht laden', e);
