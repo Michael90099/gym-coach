@@ -17,6 +17,7 @@ function defaultState() {
     soundMode: 'voice',  // 'voice' | 'beep' | 'off'
     runLogs: [],         // absolvierte Laufeinheiten
     runLevel: 1,         // Intervall-Stufe 1–6 (Ziel: 4×4)
+    runGoal: 2,          // Intervalleinheiten pro Woche (1–3)
     runHrMax: null,      // selbst gemessene maximale Herzfrequenz, sonst Schätzung
     oura: { entries: [] },  // Morgencheck: Bereitschaft, Schlaf, HRV, Ruhepuls
     weeklyGoal: 3,       // Trainings pro Woche (2 oder 3)

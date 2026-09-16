@@ -591,6 +591,41 @@ table.data-table td:first-child { color: var(--text); }
 .zone-verdict.ok { background: rgba(77, 212, 172, 0.13); border: 1px solid rgba(77, 212, 172, 0.45); color: var(--accent2); }
 .zone-verdict.miss { background: rgba(255, 209, 102, 0.11); border: 1px solid rgba(255, 209, 102, 0.4); color: var(--gold); }
 
+/* Coach über allem */
+.week-coach { border-color: rgba(255, 166, 87, 0.45); }
+.week-coach.good { border-color: rgba(77, 212, 172, 0.5); }
+.week-coach.warn { border-color: rgba(255, 209, 102, 0.55); }
+.week-coach.warn .cc-label { color: var(--gold); }
+.week-coach.good .cc-label { color: var(--accent2); }
+.wk-warn {
+  font-size: 12.5px; font-weight: 600; color: var(--gold); margin-top: 8px;
+  background: rgba(255, 209, 102, 0.1); border: 1px solid rgba(255, 209, 102, 0.35);
+  border-radius: 10px; padding: 8px 11px;
+}
+.wk-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.wk-tile { background: var(--surface2); border: 1px solid var(--border); border-radius: 11px; padding: 9px 4px; text-align: center; }
+.wk-tile.done { border-color: rgba(77, 212, 172, 0.45); }
+.wk-tile .wk-icon { font-size: 17px; }
+.wk-tile .wk-count { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.wk-tile.done .wk-count { color: var(--accent2); }
+.wk-tile .wk-name { font-size: 10px; color: var(--muted); margin-top: 1px; }
+.wk-more {
+  display: block; width: 100%; margin-top: 10px; padding: 9px;
+  font-size: 12.5px; font-weight: 700; color: var(--text2);
+  background: none; border: 1px dashed var(--border); border-radius: 11px;
+}
+
+.wp-list { display: flex; flex-direction: column; gap: 5px; margin: 12px 0 4px; }
+.wp-day {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+}
+.wp-day.today { border-color: var(--accent); background: rgba(255, 166, 87, 0.09); }
+.wp-day .wp-tag { width: 26px; font-size: 12px; font-weight: 800; color: var(--muted); }
+.wp-day.today .wp-tag { color: var(--accent); }
+.wp-day .wp-icon { font-size: 16px; }
+.wp-day .wp-name { font-size: 13.5px; font-weight: 600; }
+
 .running-hint { border-color: rgba(255, 166, 87, 0.45); }
 .running-hint h2 { color: var(--accent); }
 

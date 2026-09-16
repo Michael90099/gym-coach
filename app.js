@@ -173,6 +173,69 @@ function backupHintHtml() {
     '</p><button class="btn secondary" id="homeExportBtn">⬇︎ Jetzt sichern</button></div>';
 }
 
+// Der Coach über allem: eine klare Ansage für heute, dazu der Wochenüberblick
+function overallCoachHtml() {
+  const c = overallCoach(state);
+  const t = c.targets, tal = c.tally;
+
+  const fortschritt = [
+    { k: 'strength', ist: tal.strength, soll: t.strength },
+    { k: 'interval', ist: tal.interval, soll: t.interval },
+    { k: 'mobility', ist: tal.mobility, soll: t.mobility },
+  ].map((x) => {
+    const done = x.ist >= x.soll;
+    return '<div class="wk-tile' + (done ? ' done' : '') + '">' +
+      '<div class="wk-icon">' + KIND_INFO[x.k].icon + '</div>' +
+      '<div class="wk-count">' + x.ist + '/' + x.soll + '</div>' +
+      '<div class="wk-name">' + esc(KIND_INFO[x.k].label) + '</div></div>';
+  }).join('');
+
+  const warn = c.warnings.length
+    ? '<div class="wk-warn">⚠️ ' + esc(c.warnings[0]) + '</div>' : '';
+
+  const btn = c.action && c.action.tab
+    ? '<button class="btn" id="coachGo" data-gotab="' + c.action.tab + '">' +
+      c.action.icon + ' ' + esc(c.action.label) + ' starten</button>'
+    : '';
+
+  return '<div class="card coach-card week-coach ' + c.tone + '">' +
+    '<div class="cc-label">Dein Coach heute</div>' +
+    '<h2 class="cc-head">' + esc(c.headline) + '</h2>' +
+    '<p class="cc-advice">' + esc(c.advice) + '</p>' +
+    warn +
+    '<div class="wk-row">' + fortschritt + '</div>' +
+    btn +
+    '<button class="wk-more" id="weekPlanBtn">📅 Wochenaufteilung & wie oft was bringt</button>' +
+  '</div>';
+}
+
+function openWeekPlanSheet() {
+  const plan = weekTemplate(state);
+  const heute = (new Date().getDay() + 6) % 7;
+  const rows = plan.map((d, i) =>
+    '<div class="wp-day' + (i === heute ? ' today' : '') + '">' +
+      '<span class="wp-tag">' + d.tag + '</span>' +
+      '<span class="wp-icon">' + KIND_INFO[d.kind].icon + '</span>' +
+      '<span class="wp-name">' + esc(KIND_INFO[d.kind].label) + '</span>' +
+    '</div>'
+  ).join('');
+
+  const fakten = FREQUENCY_FACTS.map((f) =>
+    '<div class="plan-ex"><div><b>' + esc(f.titel) + '</b><div class="px-muscle" style="margin-top:3px">' +
+    esc(f.text) + '</div></div></div>'
+  ).join('');
+
+  showOverlay(
+    '<h2>📅 So geht die Woche auf</h2>' +
+    '<p class="muted small">Ein Muster, kein Zwang – harte Tage verteilt, nie drei am Stück, ' +
+    'zwischen den Intervallen immer zwei Tage.</p>' +
+    '<div class="wp-list">' + rows + '</div>' +
+    '<div class="section-label">Wie oft bringt was?</div>' + fakten +
+    '<button class="btn secondary" id="closeWeekPlan" style="margin-top:14px">Schließen</button>'
+  );
+  $('#closeWeekPlan').addEventListener('click', hideOverlay);
+}
+
 function renderHome() {
   const { streak, thisWeekCount, goal } = getStreak(state);
   const lvl = getLevel(state.points);
@@ -196,6 +259,8 @@ function renderHome() {
       '<div class="greeting">' + greeting() + '</div>' +
       '<div class="quote">' + esc(pickQuote(QUOTES.start)) + '</div>' +
     '</div>' +
+
+    overallCoachHtml() +
 
     '<div class="stat-row">' +
       '<div class="stat-tile"><div class="val flame"><span class="flame-icon">🔥</span> <span data-count="' + streak + '">0</span></div><div class="lbl">Wochen-Streak</div></div>' +
@@ -270,6 +335,14 @@ function renderHome() {
   if (mbBtn) mbBtn.addEventListener('click', () => switchTab('mobility'));
   const rnBtn = $('#homeRunBtn');
   if (rnBtn) rnBtn.addEventListener('click', () => switchTab('running'));
+  const goBtn = $('#coachGo');
+  if (goBtn) goBtn.addEventListener('click', () => {
+    const tab = goBtn.dataset.gotab;
+    if (tab === 'home') startWorkout(selectedWorkoutKey);
+    else switchTab(tab);
+  });
+  const wpBtn = $('#weekPlanBtn');
+  if (wpBtn) wpBtn.addEventListener('click', openWeekPlanSheet);
   wireOuraCard();
 }
 
