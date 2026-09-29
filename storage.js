@@ -15,6 +15,7 @@ function defaultState() {
     mobilityLogs: [],    // absolvierte Dehn-/Mobility-Einheiten
     mobilityGoal: 3,     // Dehneinheiten pro Woche (2–5)
     soundMode: 'voice',  // 'voice' | 'beep' | 'off'
+    audioFocus: 'mix',   // 'mix' = Musik läuft weiter | 'solo' = Ton pausiert andere Apps
     runLogs: [],         // absolvierte Laufeinheiten
     runLevel: 1,         // Intervall-Stufe 1–6 (Ziel: 4×4)
     runGoal: 2,          // Intervalleinheiten pro Woche (1–3)

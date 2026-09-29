@@ -868,14 +868,32 @@ function soundMode() {
   return state.soundMode || 'voice';   // 'off' | 'beep' | 'voice'
 }
 
-function initAudio() {
+// Wie sich die App gegenüber laufender Musik verhält.
+// 'transient' legt die Signaltöne ÜBER die Musik und senkt sie nur kurz ab.
+// 'playback' ist laut Spezifikation exklusiv – es pausiert andere Apps dauerhaft,
+// setzt sich dafür aber über den seitlichen Stummschalter hinweg.
+const AUDIO_FOCUS = {
+  mix:  { type: 'transient', label: '🎵 Musik läuft weiter',
+          desc: 'Signaltöne legen sich über Spotify & Co. und senken die Musik nur kurz ab' },
+  solo: { type: 'playback',  label: '🔔 Ton hat Vorrang',
+          desc: 'Töne kommen auch bei stummgeschaltetem iPhone – pausiert dafür laufende Musik' },
+};
+
+function audioFocusKey() {
+  return state.audioFocus === 'solo' ? 'solo' : 'mix';
+}
+
+function applyAudioFocus() {
   try {
-    // Entscheidend fürs iPhone: Ohne diese Zeile schaltet der seitliche
-    // Stummschalter jeden Web-Ton ab – im Studio hört man dann gar nichts.
-    if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
-      navigator.audioSession.type = 'playback';
+    const wunsch = AUDIO_FOCUS[audioFocusKey()].type;
+    if (navigator.audioSession && navigator.audioSession.type !== wunsch) {
+      navigator.audioSession.type = wunsch;
     }
   } catch (e) { /* ältere Systeme kennen das noch nicht */ }
+}
+
+function initAudio() {
+  applyAudioFocus();
   try {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -1370,8 +1388,17 @@ function renderProgress() {
         '<button class="btn secondary" data-testsound="done">🔔 Signal „Übung fertig"</button>' +
         '<button class="btn secondary" data-testsound="voice">🗣 Ansage testen</button>' +
       '</div>' +
-      '<p class="muted small" style="margin-top:10px">Hörst du am iPhone nichts, obwohl Töne aktiv sind: Der seitliche <b>Stummschalter</b> muss aus sein und die Lautstärke oben. ' +
-      'Die App bittet das System zwar darum, den Ton trotzdem durchzulassen – ältere iOS-Versionen ignorieren das aber.</p>' +
+      '<div class="section-label" style="margin-top:16px">Verhalten zu laufender Musik</div>' +
+      '<div class="sound-list">' +
+        Object.keys(AUDIO_FOCUS).map((k) =>
+          '<button class="variant-opt' + (audioFocusKey() === k ? ' sel' : '') + '" data-audiofocus="' + k + '">' +
+            '<div class="vo-name">' + esc(AUDIO_FOCUS[k].label) + (audioFocusKey() === k ? ' <span class="vo-cur">aktiv</span>' : '') + '</div>' +
+            '<div class="vo-desc">' + esc(AUDIO_FOCUS[k].desc) + '</div>' +
+          '</button>'
+        ).join('') +
+      '</div>' +
+      '<p class="muted small" style="margin-top:10px">Bei „Musik läuft weiter" gilt am iPhone der seitliche <b>Stummschalter</b> – ist er an, bleiben die Signale stumm. ' +
+      'Trainierst du ohne Musik und hörst nichts, stell auf „Ton hat Vorrang" um.</p>' +
     '</div>' +
     '<div class="section-label">Pausen-Timer</div>' +
     '<div class="card">' +
@@ -1404,6 +1431,14 @@ function renderProgress() {
     setSoundMode(b.dataset.soundmode);
     renderProgress();
     toast(soundIcon() + ' ' + SOUND_MODES.find((m) => m.key === state.soundMode).label);
+  }));
+
+  $$('[data-audiofocus]').forEach((b) => b.addEventListener('click', () => {
+    state.audioFocus = b.dataset.audiofocus;
+    saveState(state);
+    applyAudioFocus();
+    renderProgress();
+    toast(AUDIO_FOCUS[audioFocusKey()].label);
   }));
 
   $$('[data-testsound]').forEach((b) => b.addEventListener('click', () => {
