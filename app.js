@@ -395,9 +395,10 @@ function workoutLengthOf() {
   return state.workoutLength || 'full';
 }
 
-// Superserien an? Standard: ja (spart ~18 Min pro Einheit, siehe plan.js).
+// Superserien an? Standard: nein. Sie sparen Zeit, man muss dafür aber zwei
+// Geräte gleichzeitig belegen - im vollen Studio nicht machbar.
 function supersetsOn() {
-  return state.supersets !== false;
+  return state.supersets === true;
 }
 
 function blocksFor(key, length) {
@@ -1496,20 +1497,20 @@ function renderProgress() {
     '<div class="section-label">Trainingsablauf</div>' +
     '<div class="card">' +
       '<div class="sound-list">' +
-        '<button class="variant-opt' + (supersetsOn() ? ' sel' : '') + '" data-supersets="on">' +
-          '<div class="vo-name">⇄ Übungen im Wechsel' + (supersetsOn() ? ' <span class="vo-cur">aktiv</span>' : '') + '</div>' +
-          '<div class="vo-desc">Satz Beinpresse, 75 s Pause, Satz Rudern, 75 s Pause … Spart rund 18 Minuten pro Einheit.</div>' +
-        '</button>' +
         '<button class="variant-opt' + (!supersetsOn() ? ' sel' : '') + '" data-supersets="off">' +
           '<div class="vo-name">↓ Eine Übung nach der anderen' + (!supersetsOn() ? ' <span class="vo-cur">aktiv</span>' : '') + '</div>' +
-          '<div class="vo-desc">Klassisch, alle Sätze einer Übung hintereinander. Länger, aber du brauchst nur ein Gerät.</div>' +
+          '<div class="vo-desc">Klassisch: alle Sätze fertig, dann weiter. Du belegst immer nur ein Gerät.</div>' +
+        '</button>' +
+        '<button class="variant-opt' + (supersetsOn() ? ' sel' : '') + '" data-supersets="on">' +
+          '<div class="vo-name">⇄ Zwei Übungen im Wechsel' + (supersetsOn() ? ' <span class="vo-cur">aktiv</span>' : '') + '</div>' +
+          '<div class="vo-desc">Rund 13 Minuten kürzer – aber du belegst zwei Geräte gleichzeitig. Nur für leere Studiozeiten.</div>' +
         '</button>' +
       '</div>' +
       '<p class="muted small" style="margin-top:10px">Im Wechsel wird die Wartezeit an Gerät A mit einem Satz an Gerät B gefüllt. ' +
-      'Jeder Muskel bekommt dadurch sogar <b>mehr</b> Erholung als vorher (Beinpresse: 194 statt 150 Sekunden) – ' +
-      'gleiche Sätze, gleiches Volumen, kürzere Einheit. Gepaart wird nur, was sich nicht behindert: ' +
-      'nie zwei Schulterübungen, nie zwei Griffkraft-Übungen.<br>' +
-      'Ist das Studio voll und du bekommst keine zwei Geräte, schalt auf „eine nach der anderen“ um.</p>' +
+      'Trainingsreiz und Erholung bleiben dabei voll erhalten – jeder Muskel bekommt sogar <b>mehr</b> Pause als vorher ' +
+      '(Beinpresse: 194 statt 150 Sekunden), weil der Partnersatz dazwischenliegt.<br>' +
+      '<b>Der Haken ist praktisch, nicht sportlich:</b> du musst zwei Geräte gleichzeitig freihalten. ' +
+      'Zu Stoßzeiten klappt das selten – darum ist der klassische Ablauf voreingestellt.</p>' +
     '</div>' +
     '<div class="section-label">Ton & Ansage</div>' +
     '<div class="card">' +

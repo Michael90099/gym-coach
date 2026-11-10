@@ -200,8 +200,7 @@ const EX_PRIO = {
 
 const WORKOUT_LENGTHS = [
   { key: 'full', label: 'Voll', maxPrio: 3, warmup: 8 * 60,
-    desc: 'Das komplette Programm mit allen Übungen – Paare laufen im Wechsel, ' +
-      'das spart rund eine Viertelstunde bei gleichem Volumen.' },
+    desc: 'Das komplette Programm mit allen Übungen.' },
   { key: 'short', label: 'Kurz', maxPrio: 2, warmup: 6 * 60,
     desc: 'Grundübungen und Schulterarbeit bleiben, Isolation für Arme und Waden fällt weg.' },
   { key: 'express', label: 'Express', maxPrio: 1, warmup: 5 * 60,

@@ -14,7 +14,10 @@ function defaultState() {
     badgeDates: {},      // wann welches Abzeichen freigeschaltet wurde (für die Zeitleiste)
     mobilityLogs: [],    // absolvierte Dehn-/Mobility-Einheiten
     mobilityGoal: 3,     // Dehneinheiten pro Woche (2–5)
-    supersets: true,    // Übungen im Wechsel (spart ~18 Min, siehe plan.js)
+    supersets: false,   // Übungen im Wechsel: spart Zeit, blockiert aber zwei
+                        // Geräte gleichzeitig. Im vollen Studio unpraktisch,
+                        // darum aus. Umschaltbar unter Werte > Trainingsablauf.
+    ssDefaultV33: true, // merkt, dass der Standard schon korrigiert wurde
     soundMode: 'voice',  // 'voice' | 'beep' | 'off'
     audioFocus: 'mix',   // 'mix' = Musik läuft weiter | 'solo' = Ton pausiert andere Apps
     runLogs: [],         // absolvierte Laufeinheiten
@@ -37,6 +40,12 @@ function loadState() {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return defaultState();
     const state = Object.assign(defaultState(), JSON.parse(raw));
+    // v32 hatte die Superserien versehentlich als Standard an. Wer sie nicht
+    // selbst eingeschaltet hat, bekommt wieder den klassischen Ablauf.
+    if (!state.ssDefaultV33) {
+      state.supersets = false;
+      state.ssDefaultV33 = true;
+    }
     // Ältere Speicherstände kennen die Körperdaten noch nicht
     state.body = Object.assign(defaultState().body, state.body || {});
     state.oura = Object.assign(defaultState().oura, state.oura || {});
