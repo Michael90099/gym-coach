@@ -173,6 +173,45 @@ const EQUIPMENT = {
   c_farmerwalk: 'dumbbell',
 };
 
+// ---------- Trainingslängen ----------
+// Nicht die Sätze werden gekürzt, sondern die Übungsauswahl. So bleibt die
+// Progression je Übung unverändert vergleichbar – zwei Sätze statt drei würden
+// sonst als "nicht geschafft" gewertet und die Steigerung blockieren.
+//
+// prio 1 = auch im Express · prio 2 = ab Kurz · prio 3 = nur im Vollprogramm
+// Die Auswahl folgt zwei Regeln: Die großen Mehrgelenkübungen bleiben immer drin,
+// und mindestens eine Schulterübung bleibt immer drin – die ist bei dir der
+// medizinische Kern, nicht das Beiwerk.
+const EX_PRIO = {
+  // A
+  a_beinpresse: 1, a_rudern: 1, a_brustpresse: 1, a_facepulls: 1,
+  a_rdl: 2, a_extrot: 2,
+  a_latzug: 3, a_plank: 3, a_waden: 3, a_seitheben: 3, a_hammercurls: 3, a_trizeps: 3, a_deadbug: 3,
+  // B
+  b_splitsquat: 1, b_walking_lunges: 1, b_reverse_lunges: 1,
+  b_kabelrudern: 1, b_revbutterfly: 1, b_liegestuetze: 1,
+  b_beinbeuger: 2, b_yraises: 2,
+  b_pallof: 3, b_beinstrecker: 3, b_scaption: 3, b_szcurls: 3, b_trizeps: 3, b_kneeraises: 3,
+  // C
+  c_kniebeuge: 1, c_latzug_eng: 1, c_facepulls: 1, c_schraegbank: 1,
+  c_hipthrust: 2, c_einarm_rudern: 2,
+  c_extrot: 3, c_plank: 3, c_seitheben: 3, c_bizeps: 3, c_trizeps: 3, c_farmerwalk: 3,
+};
+
+const WORKOUT_LENGTHS = [
+  { key: 'full', label: 'Voll', maxPrio: 3, warmup: 8 * 60,
+    desc: 'Das komplette Programm mit allen Übungen.' },
+  { key: 'short', label: 'Kurz', maxPrio: 2, warmup: 6 * 60,
+    desc: 'Grundübungen und Schulterarbeit bleiben, Isolation für Arme und Waden fällt weg.' },
+  { key: 'express', label: 'Express', maxPrio: 1, warmup: 5 * 60,
+    desc: 'Beine, Ziehen, Drücken, Schulter – mehr nicht. Tipp: Ziehen und Drücken im Wechsel ' +
+      'statt nacheinander spart nochmal 6–8 Minuten, ohne dass der Reiz leidet.' },
+];
+
+function lengthDef(key) {
+  return WORKOUT_LENGTHS.find((l) => l.key === key) || WORKOUT_LENGTHS[0];
+}
+
 // Ein Platz im Plan ("Slot") kann mehrere gleichwertige Varianten haben.
 // Die Basis-Übung plus ihre Alternativen als flache Liste.
 function variantsOf(slot) {
@@ -185,6 +224,7 @@ for (const w of PLAN.workouts) {
       v.rest = REST_OVERRIDES[v.id] || REST_DEFAULTS[v.group];
       v.equipment = EQUIPMENT[v.id] || 'machine';
       v.step = STEP_DEFAULTS[v.equipment];
+      v.prio = EX_PRIO[v.id] || 3;
     }
   }
 }
@@ -219,8 +259,11 @@ function resolveExercise(slot, variants) {
   return (slot.alternatives || []).find((a) => a.id === chosen) || slot;
 }
 
-function resolvedExercises(workout, variants) {
-  return workout.exercises.map((slot) => resolveExercise(slot, variants));
+function resolvedExercises(workout, variants, length) {
+  const max = lengthDef(length).maxPrio;
+  return workout.exercises
+    .map((slot) => resolveExercise(slot, variants))
+    .filter((ex) => (ex.prio || 3) <= max);
 }
 
 // Einheit fürs Eingabefeld – macht sichtbar, ob pro Hand oder gesamt gezählt wird

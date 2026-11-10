@@ -13,8 +13,8 @@ function estimateSetWorkSeconds(ex) {
 
 // Gesamtzeit für ein komplettes Training (inkl. Aufwärmen, Satz- und Übungswechsel-Pausen).
 // Erwartet die bereits aufgelöste Übungsliste (gewählte Varianten).
-function estimateWorkoutSeconds(exs) {
-  let total = WARMUP_SEC;
+function estimateWorkoutSeconds(exs, length) {
+  let total = typeof lengthDef === 'function' ? lengthDef(length).warmup : WARMUP_SEC;
   exs.forEach((ex, i) => {
     const setSec = estimateSetWorkSeconds(ex);
     total += setSec * ex.sets;

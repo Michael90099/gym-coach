@@ -25,6 +25,7 @@ function defaultState() {
     restOffset: 10,      // Sekunden Bedien-Ausgleich, um die der Pausen-Timer verkürzt startet
     lastExportAt: null,  // letztes Backup – iOS kann localStorage löschen
     rehabCount: 0,
+    workoutLength: 'full',  // 'full' | 'short' | 'express'
     lastWorkoutKey: null,
     createdAt: new Date().toISOString(),
   };

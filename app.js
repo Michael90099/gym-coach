@@ -282,7 +282,16 @@ function renderHome() {
     '<div class="card">' +
       '<h2>Nächstes Training</h2>' +
       '<div class="workout-picker">' + picker + '</div>' +
-      '<div class="workout-estimate">⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(resolvedExercises(getWorkout(selectedWorkoutKey), state.variants))) + ' inkl. Aufwärmen</div>' +
+      '<div class="workout-picker len-picker">' +
+        WORKOUT_LENGTHS.map((l) => {
+          const n = resolvedExercises(getWorkout(selectedWorkoutKey), state.variants, l.key).length;
+          return '<button data-len="' + l.key + '" class="' + (workoutLengthOf() === l.key ? 'sel' : '') + '">' +
+            esc(l.label) + '<span class="lp-sub">' + n + ' Üb. · ' +
+            fmtDuration(estimateWorkoutSeconds(resolvedExercises(getWorkout(selectedWorkoutKey), state.variants, l.key), l.key)) +
+            '</span></button>';
+        }).join('') +
+      '</div>' +
+      '<div class="workout-estimate">' + esc(lengthDef(workoutLengthOf()).desc) + '</div>' +
       '<button class="btn" id="startBtn">▶︎ ' + esc(getWorkout(selectedWorkoutKey).name) + ' starten</button>' +
     '</div>' +
 
@@ -325,6 +334,12 @@ function renderHome() {
   $$('.workout-picker button').forEach((b) => b.addEventListener('click', () => {
     selectedWorkoutKey = b.dataset.key;
     renderHome();
+  }));
+  $$('[data-len]').forEach((b) => b.addEventListener('click', () => {
+    state.workoutLength = b.dataset.len;
+    saveState(state);
+    renderHome();
+    toast('⏱ ' + lengthDef(state.workoutLength).label);
   }));
   $('#startBtn').addEventListener('click', () => startWorkout(selectedWorkoutKey));
   const expBtn = $('#homeExportBtn');
@@ -375,12 +390,18 @@ function buildSessionExercise(planEx) {
   };
 }
 
+function workoutLengthOf() {
+  return state.workoutLength || 'full';
+}
+
 function startWorkout(key) {
+  const len = workoutLengthOf();
   session = {
     workoutKey: key,
+    length: len,
     startedAt: new Date().toISOString(),
     warmup: {},
-    exercises: resolvedExercises(getWorkout(key), state.variants).map(buildSessionExercise),
+    exercises: resolvedExercises(getWorkout(key), state.variants, len).map(buildSessionExercise),
   };
   saveSession(session);
   switchTab('home');
@@ -1179,6 +1200,7 @@ function finishWorkout(rehabDone) {
     date: new Date().toISOString(),
     workoutKey: session.workoutKey,
     workoutName: w.name,
+    length: session.length || 'full',
     durationMin: Math.max(1, Math.round((Date.now() - new Date(session.startedAt).getTime()) / 60000)),
     warmupDone: Object.keys(session.warmup).length >= PLAN.warmup.length - 1,
     rehabDone: !!rehabDone,
@@ -1290,6 +1312,7 @@ function renderHistory() {
     return '<div class="card log-item" data-log="' + log.id + '">' +
       '<div class="log-main"><div class="log-title">' + esc(log.workoutName) + '</div>' +
       '<div class="log-sub">' + fmtDate(log.date) + ' · ' + setCount + ' Sätze · ' + log.durationMin + ' Min' +
+      (log.length && log.length !== 'full' ? ' · ' + esc(lengthDef(log.length).label) : '') +
       (incr ? ' · 📈 ' + incr + '× gesteigert' : '') + (log.rehabDone ? ' · 🩹 Reha' : '') + '</div></div>' +
       '<div class="log-pts">+' + (log.points || 0) + '</div>' +
     '</div>';
@@ -2875,14 +2898,17 @@ function renderPlanView() {
       const target = ex.metric === 'time' ? ex.sets + '×' + ex.timeTarget + 's'
         : ex.metric === 'distance' ? ex.sets + '×' + ex.distTarget + 'm'
         : ex.sets + '×' + (ex.repsMin === ex.repsMax ? ex.repsMax : ex.repsMin + '–' + ex.repsMax);
+      const inKurz = (ex.prio || 3) <= 2, inExpress = (ex.prio || 3) <= 1;
       return '<div class="plan-ex"><div>' + esc(ex.name) +
+        (inExpress ? ' <span class="prio-tag express">Express</span>' : inKurz ? ' <span class="prio-tag kurz">Kurz</span>' : '') +
         ' <button class="swap-btn small" data-swapslot="' + slot.id + '" aria-label="Übung anpassen">' + (hasVariants ? '⇄' : '⚙') + '</button>' +
         '<div class="px-muscle">' + esc(ex.muscle) +
         ' · ⏱ ' + fmtTime(ex.rest) + ' Pause' + (ex.note ? ' · ' + esc(ex.note) : '') + '</div></div>' +
         '<div class="px-sets">' + target + '</div></div>';
     }).join('');
     return '<details class="fold"><summary><span>' + esc(w.name) +
-      '<span class="fold-duration"> · ⏱ ca. ' + fmtDuration(estimateWorkoutSeconds(resolvedExercises(w, state.variants))) + '</span></span></summary>' +
+      '<span class="fold-duration"> · ⏱ ' + WORKOUT_LENGTHS.map((l) =>
+        fmtDuration(estimateWorkoutSeconds(resolvedExercises(w, state.variants, l.key), l.key))).join(' / ') + '</span></span></summary>' +
       '<div class="fold-body">' + rows + '</div></details>';
   }).join('');
 
