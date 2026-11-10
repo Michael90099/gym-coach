@@ -284,10 +284,11 @@ function renderHome() {
       '<div class="workout-picker">' + picker + '</div>' +
       '<div class="workout-picker len-picker">' +
         WORKOUT_LENGTHS.map((l) => {
-          const n = resolvedExercises(getWorkout(selectedWorkoutKey), state.variants, l.key).length;
+          const bl = blocksFor(selectedWorkoutKey, l.key);
+          const n = bl.reduce((a, b) => a + b.exercises.length, 0);
           return '<button data-len="' + l.key + '" class="' + (workoutLengthOf() === l.key ? 'sel' : '') + '">' +
             esc(l.label) + '<span class="lp-sub">' + n + ' Üb. · ' +
-            fmtDuration(estimateWorkoutSeconds(resolvedExercises(getWorkout(selectedWorkoutKey), state.variants, l.key), l.key)) +
+            fmtDuration(estimateWorkoutSeconds(bl, l.key)) +
             '</span></button>';
         }).join('') +
       '</div>' +
@@ -394,14 +395,36 @@ function workoutLengthOf() {
   return state.workoutLength || 'full';
 }
 
+// Superserien an? Standard: ja (spart ~18 Min pro Einheit, siehe plan.js).
+function supersetsOn() {
+  return state.supersets !== false;
+}
+
+function blocksFor(key, length) {
+  return workoutBlocks(getWorkout(key), state.variants, length, supersetsOn());
+}
+
 function startWorkout(key) {
   const len = workoutLengthOf();
+  const blocks = blocksFor(key, len);
+  // Die Session bleibt eine flache Liste – jede Übung weiß aber, zu welchem
+  // Block sie gehört. Daran erkennt der Player das Paar und die kurze Pause.
+  const exercises = [];
+  blocks.forEach((bl, bi) => {
+    bl.exercises.forEach((ex) => {
+      const sEx = buildSessionExercise(ex);
+      sEx.block = bi;
+      if (bl.superset) sEx.ssRest = bl.rest;
+      exercises.push(sEx);
+    });
+  });
   session = {
     workoutKey: key,
     length: len,
+    supersets: supersetsOn(),
     startedAt: new Date().toISOString(),
     warmup: {},
-    exercises: resolvedExercises(getWorkout(key), state.variants, len).map(buildSessionExercise),
+    exercises: exercises,
   };
   saveSession(session);
   switchTab('home');
@@ -462,6 +485,29 @@ function updateRampRow(exIdx) {
   }
 }
 
+// Zwei Karten derselben Superserie in einen Rahmen fassen, damit im Studio
+// sofort klar ist: diese beiden werden im Wechsel gemacht, nicht nacheinander.
+function groupSupersetCards(cards) {
+  let html = '', i = 0;
+  while (i < cards.length) {
+    const sEx = session.exercises[i];
+    const nxt = session.exercises[i + 1];
+    const paar = sEx.ssRest && nxt && nxt.block === sEx.block;
+    if (paar) {
+      const fertig = sEx.sets.every((x) => x.done) && nxt.sets.every((x) => x.done);
+      html += '<div class="ss-block' + (fertig ? ' complete' : '') + '">' +
+        '<div class="ss-head">⇄ Im Wechsel · ' + fmtTime(sEx.ssRest) + ' Pause' +
+          '<span class="ss-hint">Immer abwechselnd: ein Satz hier, ein Satz dort.</span>' +
+        '</div>' + cards[i] + cards[i + 1] + '</div>';
+      i += 2;
+    } else {
+      html += cards[i];
+      i += 1;
+    }
+  }
+  return html;
+}
+
 function renderWorkout() {
   const w = getWorkout(session.workoutKey);
 
@@ -469,7 +515,7 @@ function renderWorkout() {
     '<label><input type="checkbox" data-wu="' + it.id + '"' + (session.warmup[it.id] ? ' checked' : '') + '><span class="ok">' + esc(it.name) + '</span></label>'
   ).join('');
 
-  const exHtml = session.exercises.map((sEx, exIdx) => {
+  const exCards = session.exercises.map((sEx, exIdx) => {
     const ex = PLAN.exerciseById[sEx.id];
     const slot = PLAN.slotByExerciseId[sEx.id];
     const hasVariants = slot && (slot.alternatives || []).length > 0;
@@ -507,13 +553,15 @@ function renderWorkout() {
     return '<div class="card exercise-card' + (complete ? ' complete' : '') + '" data-excard="' + exIdx + '">' +
       '<div class="exercise-head"><h3>' + esc(ex.name) + '</h3>' +
         '<button class="swap-btn" data-swap="' + exIdx + '" aria-label="Übung anpassen">' + (hasVariants ? '⇄' : '⚙') + '</button>' +
-        '<span class="target">' + target + ' · ⏱ ' + fmtTime(ex.rest) + '</span></div>' +
+        '<span class="target">' + target + ' · ⏱ ' + fmtTime(sEx.ssRest || ex.rest) + '</span></div>' +
       (ex.note ? '<div class="exercise-note">⚠️ ' + esc(ex.note) + '</div>' : '') +
       '<div class="rec' + recClass + '">🧠 ' + esc(sEx.rec.message) + '</div>' +
       rampHtml(ex, sEx) +
       setsHtml + rirHtml + painHtml +
     '</div>';
-  }).join('');
+  });
+
+  const exHtml = groupSupersetCards(exCards);
 
   view.innerHTML =
     '<div class="session-progress">' +
@@ -671,7 +719,7 @@ function openExerciseSettings(slotId, exIdx) {
     saveState(state);
     // Läuft die Übung gerade und ist noch nichts eingetragen, Empfehlung neu rechnen
     if (exIdx != null && session && !session.exercises[exIdx].sets.some((s) => s.done)) {
-      session.exercises[exIdx] = buildSessionExercise(PLAN.exerciseById[currentId]);
+      session.exercises[exIdx] = keepBlock(session.exercises[exIdx], buildSessionExercise(PLAN.exerciseById[currentId]));
       saveSession(session);
     }
     hideOverlay();
@@ -692,7 +740,7 @@ function openExerciseSettings(slotId, exIdx) {
     saveState(state);
 
     if (exIdx != null && session) {
-      session.exercises[exIdx] = buildSessionExercise(PLAN.exerciseById[newId]);
+      session.exercises[exIdx] = keepBlock(session.exercises[exIdx], buildSessionExercise(PLAN.exerciseById[newId]));
       saveSession(session);
     }
 
@@ -736,15 +784,64 @@ function handleSetCompleted(exIdx, i, fromTimer) {
   if (allDone) {
     stopRestTimer();
     toast('🏁 Alle Sätze geschafft – Training abschließen!');
-  } else if (sEx.sets.every((x) => x.done)) {
-    // Übung fertig -> Übungswechsel: mindestens 2 Min Pause, nächste Übung ansagen
-    const nextEx = session.exercises.find((e) => !e.sets.every((x) => x.done));
-    const nextName = nextEx ? PLAN.exerciseById[nextEx.id].name : '';
-    startRestTimer(Math.max(ex.rest, 120), pickQuote(QUOTES.exerciseDone), nextName ? 'Dann: ' + nextName : '', fromTimer);
-  } else {
-    const doneCount = sEx.sets.filter((x) => x.done).length;
-    startRestTimer(ex.rest, 'Pause · ' + ex.name, 'Dann Satz ' + Math.min(doneCount + 1, sEx.sets.length) + ' von ' + sEx.sets.length, fromTimer);
+    return;
   }
+
+  const offen = (e) => !e.sets.every((x) => x.done);
+  const partner = partnerIn(exIdx);
+
+  // Superserie: jetzt kommt der Partner dran – kurze Pause, denn der andere
+  // Muskel ist frisch. Die eigene Erholung läuft währenddessen weiter.
+  if (partner && offen(partner.sEx)) {
+    const pEx = PLAN.exerciseById[partner.sEx.id];
+    const pDone = partner.sEx.sets.filter((x) => x.done).length;
+    startRestTimer(sEx.ssRest || SUPERSET_REST, '⇄ Wechsel · ' + pEx.name,
+      'Satz ' + Math.min(pDone + 1, partner.sEx.sets.length) + ' von ' + partner.sEx.sets.length, fromTimer);
+    return;
+  }
+
+  if (offen(sEx)) {
+    const doneCount = sEx.sets.filter((x) => x.done).length;
+    const label = partner ? '⇄ Wechsel · ' + ex.name : 'Pause · ' + ex.name;
+    startRestTimer(partner ? (sEx.ssRest || SUPERSET_REST) : ex.rest, label,
+      'Satz ' + Math.min(doneCount + 1, sEx.sets.length) + ' von ' + sEx.sets.length, fromTimer);
+    return;
+  }
+
+  // Block fertig -> nächster Block. Kürzere Pause reicht, weil die Paare die
+  // Muskelgruppen verschränken (siehe BLOCK_SWITCH_REST in plan.js).
+  const nextEx = session.exercises.find(offen);
+  const nextName = nextEx ? PLAN.exerciseById[nextEx.id].name : '';
+  const nextPartner = nextEx ? partnerIn(session.exercises.indexOf(nextEx)) : null;
+  const nextLabel = nextName
+    ? 'Dann: ' + nextName + (nextPartner ? ' ⇄ ' + PLAN.exerciseById[nextPartner.sEx.id].name : '')
+    : '';
+  // sEx ist die Übung, deren Satz gerade fertig wurde - also die zuletzt
+  // belastete. Eine Einheit von vor dieser Version kennt keine Blöcke; dort
+  // bleibt die alte Wechselpause, damit sie mitten im Training nicht kürzer wird.
+  const wechsel = sEx.block == null
+    ? Math.max(ex.rest, 120)
+    : switchRest(ex, nextEx ? PLAN.exerciseById[nextEx.id] : null);
+  startRestTimer(wechsel, pickQuote(QUOTES.exerciseDone), nextLabel, fromTimer);
+}
+
+// Übung in der laufenden Einheit ersetzen, ohne die Superserien-Zuordnung zu verlieren.
+function keepBlock(alt, neu) {
+  neu.block = alt.block;
+  if (alt.ssRest) neu.ssRest = alt.ssRest;
+  return neu;
+}
+
+// Die zweite Übung derselben Superserie – oder null, wenn die Übung allein steht.
+function partnerIn(exIdx) {
+  const sEx = session.exercises[exIdx];
+  if (!sEx || sEx.block == null || !sEx.ssRest) return null;
+  for (let i = 0; i < session.exercises.length; i++) {
+    if (i !== exIdx && session.exercises[i].block === sEx.block) {
+      return { idx: i, sEx: session.exercises[i] };
+    }
+  }
+  return null;
 }
 
 // ---------- Gesamtuhr (läuft ab Trainingsstart mit) ----------
@@ -1396,6 +1493,24 @@ function renderProgress() {
         '<button data-goal="3" class="' + (weeklyGoalOf(state) === 3 ? 'sel' : '') + '">3 pro Woche</button>' +
       '</div>' +
     '</div>' +
+    '<div class="section-label">Trainingsablauf</div>' +
+    '<div class="card">' +
+      '<div class="sound-list">' +
+        '<button class="variant-opt' + (supersetsOn() ? ' sel' : '') + '" data-supersets="on">' +
+          '<div class="vo-name">⇄ Übungen im Wechsel' + (supersetsOn() ? ' <span class="vo-cur">aktiv</span>' : '') + '</div>' +
+          '<div class="vo-desc">Satz Beinpresse, 75 s Pause, Satz Rudern, 75 s Pause … Spart rund 18 Minuten pro Einheit.</div>' +
+        '</button>' +
+        '<button class="variant-opt' + (!supersetsOn() ? ' sel' : '') + '" data-supersets="off">' +
+          '<div class="vo-name">↓ Eine Übung nach der anderen' + (!supersetsOn() ? ' <span class="vo-cur">aktiv</span>' : '') + '</div>' +
+          '<div class="vo-desc">Klassisch, alle Sätze einer Übung hintereinander. Länger, aber du brauchst nur ein Gerät.</div>' +
+        '</button>' +
+      '</div>' +
+      '<p class="muted small" style="margin-top:10px">Im Wechsel wird die Wartezeit an Gerät A mit einem Satz an Gerät B gefüllt. ' +
+      'Jeder Muskel bekommt dadurch sogar <b>mehr</b> Erholung als vorher (Beinpresse: 194 statt 150 Sekunden) – ' +
+      'gleiche Sätze, gleiches Volumen, kürzere Einheit. Gepaart wird nur, was sich nicht behindert: ' +
+      'nie zwei Schulterübungen, nie zwei Griffkraft-Übungen.<br>' +
+      'Ist das Studio voll und du bekommst keine zwei Geräte, schalt auf „eine nach der anderen“ um.</p>' +
+    '</div>' +
     '<div class="section-label">Ton & Ansage</div>' +
     '<div class="card">' +
       '<p class="muted small">Signale sagen dir, wann eine Übung oder Pause zu Ende ist – ohne aufs Handy zu schauen.</p>' +
@@ -1456,6 +1571,12 @@ function renderProgress() {
     toast(soundIcon() + ' ' + SOUND_MODES.find((m) => m.key === state.soundMode).label);
   }));
 
+  $$('[data-supersets]').forEach((b) => b.addEventListener('click', () => {
+    state.supersets = b.dataset.supersets === 'on';
+    saveState(state);
+    render();
+    toast(supersetsOn() ? '⇄ Übungen im Wechsel' : '↓ Eine nach der anderen');
+  }));
   $$('[data-audiofocus]').forEach((b) => b.addEventListener('click', () => {
     state.audioFocus = b.dataset.audiofocus;
     saveState(state);
@@ -2908,7 +3029,7 @@ function renderPlanView() {
     }).join('');
     return '<details class="fold"><summary><span>' + esc(w.name) +
       '<span class="fold-duration"> · ⏱ ' + WORKOUT_LENGTHS.map((l) =>
-        fmtDuration(estimateWorkoutSeconds(resolvedExercises(w, state.variants, l.key), l.key))).join(' / ') + '</span></span></summary>' +
+        fmtDuration(estimateWorkoutSeconds(workoutBlocks(w, state.variants, l.key, supersetsOn()), l.key))).join(' / ') + '</span></span></summary>' +
       '<div class="fold-body">' + rows + '</div></details>';
   }).join('');
 

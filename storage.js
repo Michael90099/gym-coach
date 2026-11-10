@@ -14,6 +14,7 @@ function defaultState() {
     badgeDates: {},      // wann welches Abzeichen freigeschaltet wurde (für die Zeitleiste)
     mobilityLogs: [],    // absolvierte Dehn-/Mobility-Einheiten
     mobilityGoal: 3,     // Dehneinheiten pro Woche (2–5)
+    supersets: true,    // Übungen im Wechsel (spart ~18 Min, siehe plan.js)
     soundMode: 'voice',  // 'voice' | 'beep' | 'off'
     audioFocus: 'mix',   // 'mix' = Musik läuft weiter | 'solo' = Ton pausiert andere Apps
     runLogs: [],         // absolvierte Laufeinheiten

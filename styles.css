@@ -715,3 +715,33 @@ table.data-table td:first-child { color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* ---------- Superserie: zwei Uebungen im Wechsel ---------- */
+.ss-block {
+  border: 1.5px solid rgba(77, 212, 172, 0.38);
+  border-radius: 18px;
+  padding: 0 10px 10px;
+  margin: 0 0 14px;
+  background: rgba(77, 212, 172, 0.045);
+  position: relative;
+}
+.ss-block.complete { opacity: .62; }
+.ss-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 4px 9px;
+  font-size: .86rem;
+  font-weight: 650;
+  color: var(--accent2);
+  letter-spacing: .01em;
+}
+.ss-head .ss-hint {
+  font-weight: 450;
+  font-size: .76rem;
+  color: var(--text2);
+  letter-spacing: 0;
+}
+/* Die beiden Karten im Block sitzen enger und ohne eigenen Aussenrand */
+.ss-block .exercise-card { margin-bottom: 8px; }
+.ss-block .exercise-card:last-child { margin-bottom: 0; }

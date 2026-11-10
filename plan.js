@@ -200,12 +200,12 @@ const EX_PRIO = {
 
 const WORKOUT_LENGTHS = [
   { key: 'full', label: 'Voll', maxPrio: 3, warmup: 8 * 60,
-    desc: 'Das komplette Programm mit allen Übungen.' },
+    desc: 'Das komplette Programm mit allen Übungen – Paare laufen im Wechsel, ' +
+      'das spart rund eine Viertelstunde bei gleichem Volumen.' },
   { key: 'short', label: 'Kurz', maxPrio: 2, warmup: 6 * 60,
     desc: 'Grundübungen und Schulterarbeit bleiben, Isolation für Arme und Waden fällt weg.' },
   { key: 'express', label: 'Express', maxPrio: 1, warmup: 5 * 60,
-    desc: 'Beine, Ziehen, Drücken, Schulter – mehr nicht. Tipp: Ziehen und Drücken im Wechsel ' +
-      'statt nacheinander spart nochmal 6–8 Minuten, ohne dass der Reiz leidet.' },
+    desc: 'Beine, Ziehen, Drücken, Schulter – mehr nicht.' },
 ];
 
 function lengthDef(key) {
@@ -264,6 +264,98 @@ function resolvedExercises(workout, variants, length) {
   return workout.exercises
     .map((slot) => resolveExercise(slot, variants))
     .filter((ex) => (ex.prio || 3) <= max);
+}
+
+// ---------- Superserien (Übungen im Wechsel) ----------
+// Klassisch wartet man 2,5 Minuten untätig zwischen zwei Sätzen Beinpresse.
+// Im Wechsel füllt man diese Wartezeit mit einem Satz Rudern – der Rücken ist
+// ja frisch. Nachgerechnet bekommt dabei JEDER Muskel sogar mehr Erholung als
+// vorher (Beinpresse: 75 s + 44 s Rudersatz + 75 s = 194 s statt 150 s), bei
+// gleicher Satzzahl und gleichem Volumen. Spart ~18 Minuten pro Einheit.
+//
+// Gepaart wird nur, was sich nicht gegenseitig behindert:
+//   - verschiedene Muskelgruppen (Bein/Rücken, Bein/Brust, Bizeps/Trizeps)
+//   - keine zwei griffkraft-limitierten Übungen (darum bleiben Farmer Walk und
+//     einarmiges Rudern allein)
+//   - keine zwei Schulterübungen (Rücksicht auf das Impingement)
+// Nur Übungen mit langen Pausen bringen Zeitgewinn; 60-Sekunden-Übungen wie
+// Plank bleiben darum einzeln.
+// Die IDs sind Slot-IDs, das Paar folgt also automatisch der gewählten Variante
+// (z. B. Walking Lunges statt Bulgarian Split Squat).
+const SUPERSET_PAIRS = {
+  A: [['a_beinpresse', 'a_rudern'], ['a_rdl', 'a_brustpresse'],
+      ['a_latzug', 'a_waden'], ['a_hammercurls', 'a_trizeps']],
+  B: [['b_splitsquat', 'b_kabelrudern'], ['b_beinbeuger', 'b_liegestuetze'],
+      ['b_szcurls', 'b_trizeps']],
+  C: [['c_kniebeuge', 'c_latzug_eng'], ['c_hipthrust', 'c_schraegbank'],
+      ['c_bizeps', 'c_trizeps']],
+};
+
+// Pause zwischen den beiden Bewegungen eines Paares. 75 s reicht zum
+// Stationswechsel und hält zugleich jede vorgeschriebene Satzpause ein:
+// 75 + Arbeitssatz des Partners (38–68 s) + 75 = 188–218 s, die längste
+// Vorgabe im Plan sind 150 s.
+const SUPERSET_REST = 75;
+
+// Grundpause beim Wechsel zur nächsten Übung: Zeit, um das Gerät zu wechseln
+// und einzustellen. Reicht, solange der nächste Muskel frisch ist.
+const BLOCK_SWITCH_REST = 75;
+
+// Wie lange muss man beim Wechsel wirklich pausieren?
+// Trifft die nächste Übung einen anderen Muskel, ist der ausgeruht - dann zählt
+// nur die Umbauzeit. Trifft sie denselben Muskel (im klassischen Ablauf folgt
+// auf die Beinpresse das Kreuzheben), gilt dessen volle Satzpause.
+// Die Muskel-Etiketten im Plan sind grob ("Beine" = Oberschenkel + Waden), die
+// Regel fällt damit im Zweifel auf die längere Pause - das ist die sichere Seite.
+function switchRest(zuletzt, naechste) {
+  if (!zuletzt || !naechste) return BLOCK_SWITCH_REST;
+  if (zuletzt.muscle !== naechste.muscle) return BLOCK_SWITCH_REST;
+  return Math.max(BLOCK_SWITCH_REST, naechste.rest);
+}
+
+// Übungen zu Blöcken gruppieren: entweder eine Einzelübung oder ein Paar.
+// Fehlt der Partner (Kurz/Express filtert Übungen weg), wird daraus wieder
+// eine Einzelübung.
+function workoutBlocks(workout, variants, length, supersets) {
+  const exs = resolvedExercises(workout, variants, length);
+  if (!supersets) return exs.map((ex) => ({ exercises: [ex] }));
+
+  const pairs = SUPERSET_PAIRS[workout.key] || [];
+  const pairOf = {};
+  pairs.forEach((pair, i) => { pairOf[pair[0]] = i; pairOf[pair[1]] = i; });
+  const bySlot = {};
+  for (const ex of exs) bySlot[PLAN.slotByExerciseId[ex.id].id] = ex;
+
+  const blocks = [], used = {};
+  for (const ex of exs) {
+    const slotId = PLAN.slotByExerciseId[ex.id].id;
+    if (used[slotId]) continue;
+    used[slotId] = true;
+    const pi = pairOf[slotId];
+    const pair = pi != null ? pairs[pi] : null;
+    const mateSlot = pair ? (pair[0] === slotId ? pair[1] : pair[0]) : null;
+    const mate = mateSlot && !used[mateSlot] ? bySlot[mateSlot] : null;
+    if (mate) {
+      used[mateSlot] = true;
+      // Reihenfolge wie im Paar notiert: die Hauptuebung zuerst, auch wenn die
+      // Nebenuebung im Plan weiter oben steht (Latziehen vor Wadenheben).
+      const erste = pair[0] === slotId ? ex : mate;
+      const zweite = pair[0] === slotId ? mate : ex;
+      blocks.push({ exercises: [erste, zweite], superset: true, rest: SUPERSET_REST });
+    } else {
+      blocks.push({ exercises: [ex] });
+    }
+  }
+  return blocks;
+}
+
+// Übungen in Trainingsreihenfolge – Paare stehen direkt beieinander.
+function orderedExercises(workout, variants, length, supersets) {
+  const out = [];
+  for (const bl of workoutBlocks(workout, variants, length, supersets)) {
+    for (const ex of bl.exercises) out.push(ex);
+  }
+  return out;
 }
 
 // Einheit fürs Eingabefeld – macht sichtbar, ob pro Hand oder gesamt gezählt wird

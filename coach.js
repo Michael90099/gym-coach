@@ -13,28 +13,59 @@ function estimateSetWorkSeconds(ex) {
 
 // Gesamtzeit für ein komplettes Training (inkl. Aufwärmen, Satz- und Übungswechsel-Pausen).
 // Erwartet die bereits aufgelöste Übungsliste (gewählte Varianten).
-function estimateWorkoutSeconds(exs, length) {
+// Dauer einer Einheit aus ihren Blöcken (Einzelübung oder Superserien-Paar).
+function estimateWorkoutSeconds(blocks, length) {
   let total = typeof lengthDef === 'function' ? lengthDef(length).warmup : WARMUP_SEC;
-  exs.forEach((ex, i) => {
-    const setSec = estimateSetWorkSeconds(ex);
-    total += setSec * ex.sets;
-    total += (ex.sets - 1) * ex.rest; // Pausen zwischen den Sätzen derselben Übung
-    if (i < exs.length - 1) total += Math.max(ex.rest, 120); // Übungswechsel-Pause
+  blocks.forEach((bl, i) => {
+    if (bl.superset && bl.exercises.length === 2) {
+      // Im Wechsel: beide Übungen teilen sich eine Pausenkette
+      const a = bl.exercises[0], b = bl.exercises[1];
+      total += estimateSetWorkSeconds(a) * a.sets + estimateSetWorkSeconds(b) * b.sets;
+      total += (a.sets + b.sets - 1) * bl.rest;
+    } else {
+      const ex = bl.exercises[0];
+      total += estimateSetWorkSeconds(ex) * ex.sets;
+      total += (ex.sets - 1) * ex.rest; // Pausen zwischen den Sätzen derselben Übung
+    }
+    if (i < blocks.length - 1) {
+      // Bei einer Superserie ist die zuletzt ausgeführte Übung die zweite -
+      // die erste hat ja schon eine Partner-Runde Erholung hinter sich.
+      const zuletzt = bl.exercises[bl.exercises.length - 1];
+      total += switchRest(zuletzt, blocks[i + 1].exercises[0]);
+    }
   });
   return total;
 }
 
 // Restzeit für ein laufendes Training, basierend auf noch offenen Sätzen
+// Restzeit der laufenden Einheit. Rechnet blockweise, damit Superserien-Paare
+// nicht doppelt Pause bekommen.
 function estimateRemainingSeconds(session) {
-  let total = 0;
-  session.exercises.forEach((sEx, i) => {
-    const ex = PLAN.exerciseById[sEx.id];
-    const remaining = sEx.sets.filter((s) => !s.done).length;
-    if (remaining === 0) return;
-    total += estimateSetWorkSeconds(ex) * remaining;
-    total += Math.max(0, remaining - 1) * ex.rest;
-    if (i < session.exercises.length - 1) total += Math.max(ex.rest, 120);
+  // offene Sätze pro Block sammeln (sEx.block kommt aus startWorkout)
+  const blocks = [];
+  session.exercises.forEach((sEx) => {
+    const key = sEx.block != null ? sEx.block : 'e' + sEx.id;
+    let bl = blocks.find((b) => b.key === key);
+    if (!bl) { bl = { key: key, items: [], ssRest: sEx.ssRest || null }; blocks.push(bl); }
+    bl.items.push(sEx);
   });
+
+  let total = 0, offeneBloecke = 0;
+  for (const bl of blocks) {
+    let work = 0, saetze = 0, pause = 0;
+    for (const sEx of bl.items) {
+      const ex = PLAN.exerciseById[sEx.id];
+      const remaining = sEx.sets.filter((s) => !s.done).length;
+      if (!remaining) continue;
+      work += estimateSetWorkSeconds(ex) * remaining;
+      saetze += remaining;
+      pause = Math.max(pause, ex.rest);
+    }
+    if (!saetze) continue;
+    offeneBloecke++;
+    total += work + Math.max(0, saetze - 1) * (bl.ssRest && bl.items.length === 2 ? bl.ssRest : pause);
+  }
+  total += Math.max(0, offeneBloecke - 1) * BLOCK_SWITCH_REST; // Mittelwert genügt für die Restzeit
   return total;
 }
 
